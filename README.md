@@ -12,7 +12,7 @@ Original canvas art, no build step. Play at https://pollisis.github.io/sandline-
 - **Field cannons** (blue bubbles) march down with the scorpions. Shoot one to collect it into the pocket. Only one is collected per turn (highest value wins), and it replaces whatever is in the pocket. A field cannon that reaches the barricades disappears.
 - Two log barricades are split down the middle of lane 3. A scorpion that reaches a barricade smashes it and leaves. One hit is free; the second hit ends the run.
 - 25 kills = next Defense Level: tougher scorpions, bigger field cannons, +5% points.
-- Items, 10 uses each per game, free actions: Bug Spray, Extra Firepower, Super Component, Sand Bomb.
+- Items, 10 uses each per game, free actions: Bug Spray, Extra Firepower, Super Component. (No stamina/fuel system.)
 
 ## Files
 - `game.js`: pure game logic (browser + Node)

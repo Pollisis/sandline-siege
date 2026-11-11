@@ -63,6 +63,7 @@ async function useItem(page, k) {
   await page.click('#ov-buttons .btn'); await page.waitForTimeout(300);
   let s = await st(page);
   check(s.tray.filter((v) => v).length === 1 && s.tray.includes(1) && !s.pocket, 'starts with one cannon of value 1, empty pocket');
+  check(JSON.stringify(Object.keys(s.items)) === '["spray","fire","super"]' && (await page.evaluate(() => window.SandGame.ITEMS.length)) === 3, 'exactly 3 items: Bug Spray, Extra Firepower, Super Component');
   await page.screenshot({ path: `${out}/02-mobile-start.png` });
 
   // natural play until something lands in the pocket

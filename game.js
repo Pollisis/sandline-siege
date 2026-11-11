@@ -18,12 +18,11 @@
     hatchling: { name: 'Hatchling',     w: 1, pts: 60,  hp: 0.2, desc: 'Small and quick to squash. Counts as a kill.' },
     pickup:    { name: 'Field Cannon',  w: 1, pts: 0,   hp: 0,   desc: 'Shoot it to collect it. It drops into your pocket.' },
   };
-  const ITEMS = ['spray', 'fire', 'super', 'bomb'];
+  const ITEMS = ['spray', 'fire', 'super'];
   const ITEM_INFO = {
     spray: { name: 'Bug Spray', desc: 'Repairs a destroyed barricade and drives off the scorpions closest to it, earning their points.' },
     fire:  { name: 'Extra Firepower', desc: 'Tap a scorpion: it takes damage equal to 50% of the total attack of all your cannons.' },
     super: { name: 'Super Component', desc: 'Tap a cannon with attack below 32 to double it.' },
-    bomb:  { name: 'Sand Bomb', desc: 'Tap a tile: every scorpion in the 3x3 area around it loses half its max HP.' },
   };
 
   // Serializable RNG (state lives in S.rs so a state can be cloned with JSON).
@@ -53,7 +52,7 @@
       tray: [0, 0, 1, 0, 0, 0, 0, 0, 0, 0], // index = row*5 + lane, row 0 = front (nearest the barricades)
       pocket: 0,
       enemies: [], // scorpions and field cannons (type 'pickup')
-      items: { spray: ITEM_USES, fire: ITEM_USES, super: ITEM_USES, bomb: ITEM_USES },
+      items: { spray: ITEM_USES, fire: ITEM_USES, super: ITEM_USES },
       over: false, nextId: 1, dry: 0,
     };
     spawnEnemy(S, 'crawler', 0, 0, []);
@@ -295,18 +294,6 @@
       const v = getSlot(S, arg);
       if (!v || v >= 32) return { ok: false, msg: 'Tap a cannon below 32' };
       setSlot(S, arg, v * 2); ev.push({ type: 'super', slot: arg, value: v * 2 });
-    } else if (item === 'bomb') {
-      const { row, lane } = arg || {};
-      if (row == null || lane == null) return { ok: false, msg: 'Tap a tile' };
-      ev.push({ type: 'bomb', row, lane });
-      const hit = S.enemies.filter((e) => isBug(e) && Math.abs(e.row - row) <= 1 && lanesOf(e).some((l) => Math.abs(l - lane) <= 1));
-      for (const e of hit) {
-        if (!S.enemies.includes(e)) continue;
-        const dmg = Math.ceil(e.maxHp / 2);
-        ev.push({ type: 'blast', id: e.id, dmg, killed: e.hp <= dmg });
-        damage(S, e, dmg, ev);
-      }
-      checkLevel(S, ev);
     } else return { ok: false, msg: 'Unknown item' };
     S.items[item]--;
     return { ok: true, events: ev };

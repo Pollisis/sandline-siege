@@ -211,7 +211,7 @@
       { label: 'Cancel', alt: true },
       { label: 'Use', fn: () => {
         if (k === 'spray') { const r = G.useItem(S, 'spray'); if (r.ok) { sfx.item(); generalFx(r.events); sync(0, true); saveScores(); } }
-        else { mode = { item: k }; showToast(k === 'fire' ? 'Tap a scorpion to blast it' : k === 'super' ? 'Tap a cannon below 32' : 'Tap a tile to drop the bomb', 2200, '#bff7a8'); }
+        else { mode = { item: k }; showToast(k === 'fire' ? 'Tap a scorpion to blast it' : 'Tap a cannon below 32', 2200, '#bff7a8'); }
       } },
     ]);
   }
@@ -226,7 +226,7 @@
         floater(ex(v), rowY(v.dRow) - 14, '-' + fmt(e.dmg), '#ff3b2f', 32);
         puff(ex(v), rowY(v.dRow), '#ffb347', 12);
         if (e.killed) { const kk = r.events.find((x) => x.type === 'kill' && x.id === e.id); v.dying = true; killVis(e.id, kk && kk.pts); }
-      } else if (e.type === 'bomb') { shake = 12; sfx.boom(); puff(laneX(e.lane), rowY(e.row), '#ff8a3a', 40, 1.3); puff(laneX(e.lane), rowY(e.row), '#5a4a3a', 20); }
+      }
       else if (e.type === 'super') { slotFx[e.slot] = { t: now(), kind: 'merge' }; const s = slotXY(e.slot); puff(s.x, s.y, '#ffe14a', 18); sfx.merge(); if (e.slot === POCKET) pocketShown = S.pocket; }
     }
     if (k === 'fire') sfx.boom();
@@ -520,16 +520,12 @@
       g.closePath(); g.fill(); g.stroke();
       g.fillStyle = '#3a2a5a'; g.beginPath(); g.arc(0, 0, 7, 0, 7); g.fill(); g.stroke();
       g.fillStyle = '#b67cff'; g.beginPath(); g.arc(0, 0, 3.5, 0, 7); g.fill();
-    } else if (k === 'bomb') {
-      g.fillStyle = rad(g, -5, -2, 1, 18, [[0, '#6a7088'], [1, '#22252e']]); g.beginPath(); g.arc(0, 4, 16, 0, 7); g.fill(); g.stroke();
-      g.fillStyle = '#4a4e5a'; rr(g, -6, -14, 12, 6, 2); g.fill(); g.stroke();
-      g.strokeStyle = '#c9a060'; g.lineWidth = 3; g.beginPath(); g.moveTo(0, -14); g.quadraticCurveTo(6, -24, 14, -20); g.stroke();
-      g.fillStyle = '#ffcf3a'; g.beginPath(); g.arc(14, -20, 4, 0, 7); g.fill(); g.fillStyle = '#ff6a2a'; g.beginPath(); g.arc(14, -20, 2, 0, 7); g.fill();
     }
     g.restore();
   }
-  const ITEM_RING = { spray: ['#7a2e24', '#3a120c'], fire: ['#6a5a40', '#2e2418'], super: ['#6a3aa8', '#2a1250'], bomb: ['#2e4a7a', '#101e3a'] };
-  const itemXY = (k) => { const i = itemKeys.indexOf(k); return { x: FX + 50 + i * 86, y: BY + 44 }; };
+  const ITEM_RING = { spray: ['#7a2e24', '#3a120c'], fire: ['#6a5a40', '#2e2418'], super: ['#6a3aa8', '#2a1250'] };
+  const ITEM_CX = (FX + POCK.x - 44) / 2, ITEM_GAP = 96;
+  const itemXY = (k) => { const i = itemKeys.indexOf(k); return { x: ITEM_CX + (i - (itemKeys.length - 1) / 2) * ITEM_GAP, y: BY + 44 }; };
 
   // ---------- static background (cached) ----------
   let bgCanvas = null, bgH = 0;
@@ -565,8 +561,8 @@
     };
     for (let i = 0; i < G.SLOTS; i++) { const s = slotXY(i); tile(s.x, s.y, 88); }
     // item tray (dark rounded)
-    g.fillStyle = 'rgba(40,26,16,.55)'; rr(g, FX + 2, BY + 4, 352, 80, 40); g.fill();
-    g.strokeStyle = 'rgba(255,220,160,.18)'; g.lineWidth = 2; rr(g, FX + 2, BY + 4, 352, 80, 40); g.stroke();
+    { const tw = ITEM_GAP * 3 + 20, tx = ITEM_CX - tw / 2; g.fillStyle = 'rgba(40,26,16,.55)'; rr(g, tx, BY + 4, tw, 80, 40); g.fill();
+    g.strokeStyle = 'rgba(255,220,160,.18)'; g.lineWidth = 2; rr(g, tx, BY + 4, tw, 80, 40); g.stroke(); }
     // pocket tile
     tile(POCK.x, POCK.y, 88);
     g.setLineDash([6, 5]); g.strokeStyle = 'rgba(110,60,15,.6)'; g.lineWidth = 2; rr(g, POCK.x - 40, POCK.y - 40, 80, 80, 6); g.stroke(); g.setLineDash([]);
@@ -676,7 +672,6 @@
     ctx.translate(0, OY);
     const ts = t / 1000;
 
-    if (mode && mode.item === 'bomb') { ctx.fillStyle = 'rgba(255,90,40,.13)'; ctx.fillRect(FX, FY, FW, FB - FY); }
 
     // field entities (back rows first)
     const list = [...vis.values()].sort((a, b) => a.dRow - b.dRow), bars = [];
@@ -866,7 +861,6 @@
     if (mode) {
       const c = fieldCell(x, y);
       if (mode.item === 'fire' && c) { const en = S.enemies.find((en) => G.isBug(en) && en.row === c.row && c.lane >= en.lane && c.lane < en.lane + en.w); if (en) applyTargetItem(en.id); else showToast('Tap a scorpion', 900); return; }
-      if (mode.item === 'bomb' && c) { applyTargetItem(c); return; }
       if (mode.item === 'super') { const s = slotAt(x, y); if (s >= 0) { applyTargetItem(s); return; } }
       mode = null; showToast('Cancelled', 700); return;
     }

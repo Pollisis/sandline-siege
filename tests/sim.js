@@ -46,7 +46,6 @@ function useItems(S) {
     const pw = G.lanesOf(e).reduce((a, l) => a + lanePower(S, l), 0);
     if (e.hp > pw * (G.ROWS - 1 - e.row) && S.items.fire && S.enemies.includes(e)) G.useItem(S, 'fire', e.id);
   }
-  for (const e of bugs) { if (!S.enemies.includes(e)) continue; const n = bugs.filter((o) => S.enemies.includes(o) && Math.abs(o.row - e.row) <= 1 && Math.abs(o.lane - e.lane) <= 1).length; if (n >= 3 && S.items.bomb && e.row >= 2) G.useItem(S, 'bomb', { row: e.row, lane: e.lane }); }
   if (S.items.super) { let b = -1; S.tray.forEach((v, i) => { if (v && v < 32 && (b < 0 || v > S.tray[b])) b = i; }); if (b >= 0 && S.tray[b] >= 4) G.useItem(S, 'super', b); }
 }
 function run(policy, seed, items) {
