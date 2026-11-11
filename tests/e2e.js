@@ -64,6 +64,8 @@ async function useItem(page, k) {
   let s = await st(page);
   check(s.tray.filter((v) => v).length === 1 && s.tray.includes(1) && !s.pocket, 'starts with one cannon of value 1, empty pocket');
   check(JSON.stringify(Object.keys(s.items)) === '["spray","fire","super"]' && (await page.evaluate(() => window.SandGame.ITEMS.length)) === 3, 'exactly 3 items: Bug Spray, Extra Firepower, Super Component');
+  check(s.items.spray === 1 && s.items.fire === 0 && s.items.super === 0, 'power-ups start empty except 1 Bug Spray');
+  check(await page.evaluate(() => window.SandAudio.started), 'audio starts on the first user interaction');
   await page.screenshot({ path: `${out}/02-mobile-start.png` });
 
   // natural play until something lands in the pocket
@@ -84,10 +86,13 @@ async function useItem(page, k) {
   await calm(page); await page.evaluate(() => { window.__sand.S.tray[8] = 8; }); await drag(page, 10, 8); s = await st(page);
   check(s.tray[8] === 16 && !s.pocket, 'pocket cannon merges onto an equal tray cannon');
 
+  // no charges -> no dialog, hint toast
+  await page.evaluate(() => { const S = window.__sand.S; S.items = { spray: 1, fire: 0, super: 0 }; });
+  check((await useItem(page, 'fire')) === false, 'a power-up with 0 charges cannot be used');
   // Super Component on a cannon < 32
-  await page.evaluate(() => { window.__sand.S.tray[9] = 4; });
+  await page.evaluate(() => { const S = window.__sand.S; S.tray[9] = 4; S.items = { spray: 1, fire: 1, super: 1 }; S.itemUsed = { spray: 0, fire: 0, super: 0 }; });
   const t1 = await useItem(page, 'super'); const p9 = await pt(page, 9); await page.mouse.click(p9.x, p9.y); await page.waitForTimeout(150);
-  s = await st(page); check(t1 === 'Super Component' && s.tray[9] === 8 && s.items.super === 9, 'Super Component doubles a cannon (10 -> 9 uses)');
+  s = await st(page); check(t1 === 'Super Component' && s.tray[9] === 8 && s.items.super === 0 && s.itemUsed.super === 1, 'Super Component doubles a cannon (charge spent, 1/10 used)');
   // Extra Firepower
   await page.evaluate(() => { const S = window.__sand.S; S.enemies.push({ id: 7001, type: 'crawler', lane: 2, row: 2, w: 1, hp: 999, maxHp: 999 }); window.__sand.resync(); });
   await useItem(page, 'fire'); await clickLogical(page, (await page.evaluate(() => window.__sand.laneX(2))), await page.evaluate(() => window.__sand.rowY(2)));
@@ -100,7 +105,15 @@ async function useItem(page, k) {
     S.enemies.push({ id: 7400, type: 'crawler', lane: 2, row: 4, w: 1, hp: 5, maxHp: 5 }, { id: 7401, type: 'crawler', lane: 2, row: 2, w: 1, hp: 6, maxHp: 6 }, { id: 7402, type: 'crawler', lane: 2, row: 0, w: 1, hp: 50, maxHp: 50 }); window.__sand.resync(); });
   await drag(page, 0, 1); s = await st(page);
   check(!s.enemies.some((e) => e.id === 7400 || e.id === 7401) && s.enemies.find((e) => e.id === 7402).hp === 45, 'overkill carry-through: 16 dmg kills 5hp + 6hp, 5 surplus hits the third scorpion');
-  await page.evaluate(() => { const S = window.__sand.S; S.tray = [8, 16, 32, 16, 8, 4, 2, 0, 0, 0]; });
+  // Brood Queen killed with big surplus still hatches 3 young on the next move
+  await calm(page);
+  await page.evaluate(() => { const S = window.__sand.S; S.tray = [512, 512, 0, 0, 0, 0, 0, 0, 0, 0]; S.pocket = 0;
+    S.enemies.push({ id: 7500, type: 'queen', lane: 0, row: 2, w: 2, hp: 30, maxHp: 30 }); window.__sand.resync(); });
+  await drag(page, 0, 5); s = await st(page);
+  const hatch = s.enemies.filter((e) => e.type === 'hatchling');
+  check(hatch.length === 3 && hatch.every((h) => h.hp === 6 && h.row >= 1), 'Brood Queen killed with surplus: 3 hatchlings (20% HP) appear on the next move');
+  await calm(page);
+  await page.evaluate(() => { const S = window.__sand.S; S.tray = [4, 8, 16, 32, 64, 128, 256, 512, 2, 1]; });
   await play(page, 6, 'mid');
   await page.waitForTimeout(200);
   await page.screenshot({ path: `${out}/03-mobile-midgame.png` });
@@ -121,6 +134,8 @@ async function useItem(page, k) {
   await page.evaluate(() => { const S = window.__sand.S; S.kills = 24; for (const e of S.enemies) if (e.type !== 'pickup') e.hp = 1; });
   const lv0 = (await st(page)).level; await play(page, 2, 'level-up');
   s = await st(page); check(s.level === lv0 + 1 && s.kills < 25, `seamless level-up ${lv0} -> ${s.level} (counter ${s.kills}/25)`);
+  const sumIt = (x) => x.items.spray + x.items.fire + x.items.super + x.itemUsed.spray + x.itemUsed.fire + x.itemUsed.super;
+  check(sumIt(s) >= 4, 'level-up awards a power-up charge');
 
   // two hits = game over
   await calm(page);
@@ -131,9 +146,27 @@ async function useItem(page, k) {
   const over = await page.evaluate(() => !document.getElementById('overlay').classList.contains('hidden') && document.getElementById('ov-title').textContent);
   check(over === 'The Barricades Have Fallen', 'second barricade hit ends the run with the game-over dialog');
   await page.screenshot({ path: `${out}/05-mobile-gameover.png` });
+  check((await page.textContent('#ov-buttons .btn')) === 'Save Score', 'qualifying score offers Save Score');
+  await page.click('#ov-buttons .btn'); await page.waitForTimeout(200);
+  await page.fill('#hs-name', 'SG'); await page.click('#ov-buttons .btn'); await page.waitForTimeout(200);
+  check((await page.textContent('#ov-title')) === 'High Scores' && (await page.textContent('table.scores tr.me')).includes('SG'), 'name prompt saves the score into the top-10 list');
+  check((await page.evaluate(() => JSON.parse(localStorage.getItem('sandline.scores'))))[0].name === 'SG', 'high scores stored in localStorage');
+  await page.screenshot({ path: `${out}/11-mobile-highscores.png` });
   await page.click('#ov-buttons .btn'); await page.waitForTimeout(300);
   s = await st(page); check(!s.over && s.turn === 0, 'Play Again starts a fresh run');
   check((await page.evaluate(() => JSON.parse(localStorage.getItem('sandline.best')))) > 0, 'best score saved to localStorage');
+  // settings panel via the gear
+  await clickLogical(page, 540 - 86, 108); await page.waitForTimeout(250);
+  check((await page.textContent('#ov-title')) === 'Settings', 'gear opens the Settings panel');
+  await page.evaluate(() => { const r = document.getElementById('vol-music'); r.value = 25; r.dispatchEvent(new Event('input')); const f = document.getElementById('vol-sfx'); f.value = 60; f.dispatchEvent(new Event('input')); });
+  const set = await page.evaluate(() => JSON.parse(localStorage.getItem('sandline.settings')));
+  check(set.music === 0.25 && set.sfx === 0.6 && set.mute === false, 'music and SFX volumes saved to localStorage');
+  await page.screenshot({ path: `${out}/12-mobile-settings.png` });
+  await page.click('#mute-all'); check((await page.evaluate(() => JSON.parse(localStorage.getItem('sandline.settings')).mute)) === true, 'mute toggle saved');
+  await page.click('#mute-all'); await page.click('#ov-buttons .btn'); await page.waitForTimeout(200);
+  await clickLogical(page, 540 - 136, 108); await page.waitForTimeout(250);
+  check((await page.textContent('#ov-title')) === 'High Scores', 'trophy button opens High Scores');
+  await page.click('#ov-buttons .btn'); await page.waitForTimeout(200);
 
   // ---- desktop ----
   const d = await (await browser.newContext({ viewport: { width: 1366, height: 900 } })).newPage();

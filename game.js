@@ -14,7 +14,7 @@
   const TYPES = {
     crawler:   { name: 'Dune Crawler',  w: 1, pts: 100, hp: 1.0, desc: 'The common sand scorpion. Takes one lane.' },
     giant:     { name: 'Giant Crawler', w: 2, pts: 200, hp: 3.0, desc: 'Huge and armored. 2 lanes wide, so cannons in both lanes hit it.' },
-    queen:     { name: 'Brood Queen',   w: 2, pts: 200, hp: 2.5, desc: '2 lanes wide. When slain she splits into 3 Hatchlings side by side, each with 20% of her HP.' },
+    queen:     { name: 'Brood Queen',   w: 2, pts: 200, hp: 2.5, desc: '2 lanes wide. When slain, by any means, 3 Hatchlings (20% of her HP each) hatch where she fell on the next move.' },
     hatchling: { name: 'Hatchling',     w: 1, pts: 60,  hp: 0.2, desc: 'Small and quick to squash. Counts as a kill.' },
     pickup:    { name: 'Field Cannon',  w: 1, pts: 0,   hp: 0,   desc: 'Shoot it to collect it. It drops into your pocket.' },
   };
@@ -38,6 +38,10 @@
   const baseHp = (level) => Math.max(2, Math.round(HP_BASE * Math.pow(HP_GROWTH, level - 1)));
   const bonusPct = (level) => 5 * (level - 1);
   const pickupExp = (level) => Math.min(10, Math.floor((level - 1) / 2.4));
+  const EARN_CHANCE_BIG = 0.4, START_ITEMS = { spray: 1, fire: 0, super: 0 };
+  // Scorpion HP keeps up with the player's cannons: max(level curve, POWER_K * cannon power) +/- HP_JITTER
+  const POWER_K = 0.4, HP_JITTER = 0.15;
+  const playerPower = (S) => totalAttack(S) + S.pocket;
   const PICKUP_CHANCE = 0.4, PICKUP_DRY_TURNS = 3, PICKUP_BONUS_CHANCE = 0.3;
   const totalAttack = (S) => S.tray.reduce((a, b) => a + b, 0);
   const lanesOf = (e) => (e.w === 2 ? [e.lane, e.lane + 1] : [e.lane]);
@@ -52,7 +56,7 @@
       tray: [0, 0, 1, 0, 0, 0, 0, 0, 0, 0], // index = row*5 + lane, row 0 = front (nearest the barricades)
       pocket: 0,
       enemies: [], // scorpions and field cannons (type 'pickup')
-      items: { spray: ITEM_USES, fire: ITEM_USES, super: ITEM_USES },
+      items: { spray: START_ITEMS.spray, fire: START_ITEMS.fire, super: START_ITEMS.super }, itemUsed: { spray: 0, fire: 0, super: 0 }, brood: [],
       over: false, nextId: 1, dry: 0,
     };
     spawnEnemy(S, 'crawler', 0, 0, []);
@@ -78,7 +82,8 @@
     let e;
     if (type === 'pickup') e = { id: S.nextId++, type, lane, row, w: 1, value: valueOrHp, hp: 1, maxHp: 1 };
     else {
-      const hp = valueOrHp || Math.max(1, Math.round(baseHp(S.level) * T.hp));
+      const base = Math.max(baseHp(S.level), POWER_K * playerPower(S)) * (1 - HP_JITTER + 2 * HP_JITTER * rand(S));
+      const hp = valueOrHp || Math.max(1, Math.round(base * T.hp));
       e = { id: S.nextId++, type, lane, row, w: T.w, hp, maxHp: hp };
     }
     S.enemies.push(e);
@@ -103,17 +108,42 @@
     const pts = awardPts(S, TYPES[e.type].pts);
     S.kills++; S.totalKills++;
     ev.push({ type: 'kill', id: e.id, enemy: e, pts });
+    onBigDeath(S, e, ev);
+  }
+
+  // Brood Queen / Giant deaths (any cause): queue the brood, maybe drop a power-up charge.
+  function onBigDeath(S, e, ev) {
     if (e.type === 'queen') {
-      const hp = Math.max(1, Math.round(e.maxHp * 0.2)), L = e.lane, R = e.row;
-      const starts = [L - 1, L].filter((st) => st >= 0 && st + 2 < LANES);
-      const free = (st) => [0, 1, 2].filter((k) => cellsFree(S, R, st + k, 1)).length;
-      starts.sort((a, b) => free(b) - free(a) || (rand(S) - 0.5));
-      const st = starts[0];
-      const cand = [[R, st], [R, st + 1], [R, st + 2], [R - 1, L], [R - 1, L + 1], [R + 1, L], [R + 1, L + 1]];
-      let n = 0;
-      for (const [r, l] of cand) {
-        if (n >= 3) break;
-        if (cellsFree(S, r, l, 1)) { spawnEnemy(S, 'hatchling', l, r, ev, hp); n++; }
+      S.brood.push({ row: e.row, lane: e.lane, hp: Math.max(1, Math.round(e.maxHp * 0.2)), from: e.id });
+      ev.push({ type: 'broodPending', id: e.id });
+    }
+    if ((e.type === 'queen' || e.type === 'giant') && rand(S) < EARN_CHANCE_BIG) earnItem(S, ev, e.type, e);
+  }
+
+  function earnItem(S, ev, source, e) {
+    const avail = ITEMS.filter((k) => S.itemUsed[k] + S.items[k] < ITEM_USES);
+    if (!avail.length) return;
+    const k = avail[(rand(S) * avail.length) | 0];
+    S.items[k]++;
+    ev.push({ type: 'itemEarned', item: k, source, lane: e ? e.lane + (e.w - 1) / 2 : null, row: e ? e.row : null });
+  }
+
+  // Hatchlings appear on the move after the Queen dies: in her row, across her 2 lanes plus one adjacent lane.
+  function resolveBrood(S, ev) {
+    const list = S.brood; S.brood = [];
+    for (const b of list) {
+      const L = b.lane, R = b.row;
+      const st = L - 1 >= 0 && (L + 2 >= LANES || rand(S) < 0.5) ? L - 1 : Math.min(L, LANES - 3);
+      const want = [st, st + 1, st + 2];
+      for (const lane of want) {
+        let placed = null;
+        for (const r of [R, R - 1, R - 2, R + 1]) {
+          if (r < 0 || r >= ROWS) continue;
+          const order = [0, -1, 1, -2, 2, -3, 3, -4, 4].map((d) => lane + d).filter((l) => l >= 0 && l < LANES);
+          for (const l of order) if (cellsFree(S, r, l, 1)) { placed = [r, l]; break; }
+          if (placed) break;
+        }
+        if (placed) { const h = spawnEnemy(S, 'hatchling', placed[1], placed[0], ev, b.hp); h.fromQueen = b.from; ev.push({ type: 'hatch', id: h.id, from: b.from }); }
       }
     }
   }
@@ -129,6 +159,7 @@
       S.kills -= KILLS_PER_LEVEL;
       S.level++;
       ev.push({ type: 'levelUp', level: S.level, bonus: bonusPct(S.level) });
+      earnItem(S, ev, 'level', null);
     }
   }
 
@@ -220,6 +251,7 @@
       if (!S.enemies.includes(e) || e.row >= ROWS - 1) continue;
       if (cellsFree(S, e.row + 1, e.lane, e.w, e.id)) { e.row++; ev.push({ type: 'move', id: e.id }); }
     }
+    resolveBrood(S, ev);
     spawn(S, ev);
     S.turn++;
     return ev;
@@ -273,7 +305,8 @@
   function useItem(S, item, arg) {
     const ev = [];
     if (S.over) return { ok: false, msg: 'Game over' };
-    if (!S.items[item]) return { ok: false, msg: 'No uses left this game' };
+    if (S.itemUsed[item] >= ITEM_USES) return { ok: false, msg: `Used ${ITEM_USES} times already this game` };
+    if (!S.items[item]) return { ok: false, msg: 'No charges. Slay Giants and Brood Queens or level up to earn more.' };
     if (item === 'spray') {
       const wi = S.walls.findIndex((w) => !w);
       if (wi < 0) return { ok: false, msg: 'Both barricades are intact' };
@@ -282,6 +315,7 @@
       for (const e of frontBugs(S, wi)) {
         S.enemies.splice(S.enemies.indexOf(e), 1);
         ev.push({ type: 'pushedOff', id: e.id, enemy: e, pts: awardPts(S, TYPES[e.type].pts) });
+        onBigDeath(S, e, ev);
       }
     } else if (item === 'fire') {
       const e = S.enemies.find((x) => x.id === arg && isBug(x));
@@ -295,7 +329,7 @@
       if (!v || v >= 32) return { ok: false, msg: 'Tap a cannon below 32' };
       setSlot(S, arg, v * 2); ev.push({ type: 'super', slot: arg, value: v * 2 });
     } else return { ok: false, msg: 'Unknown item' };
-    S.items[item]--;
+    S.items[item]--; S.itemUsed[item]++;
     return { ok: true, events: ev };
   }
 
@@ -314,7 +348,7 @@
     return m;
   }
 
-  return { LANES, ROWS, SLOTS, POCKET, KILLS_PER_LEVEL, ITEM_USES, WALLS, WALL_SPANS, laneWalls, TYPES, ITEMS, ITEM_INFO,
+  return { LANES, ROWS, SLOTS, POCKET, KILLS_PER_LEVEL, ITEM_USES, WALLS, WALL_SPANS, laneWalls, TYPES, ITEMS, ITEM_INFO, playerPower, POWER_K,
     newGame, playerMove, fire, advance, useItem, takeTurn, legalMoves, targetInLane, totalAttack, bonusPct,
     baseHp, pickupExp, lanesOf, isBug, clone, getSlot, rand };
 });

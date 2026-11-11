@@ -35,3 +35,29 @@ canvas { display: block; touch-action: none; border-radius: 6px; box-shadow: 0 0
 .guide-row b { color: #f2c240 !important; }
 .stats div:nth-child(even) { color: #fff; }
 .big { color: #f2c240 !important; }
+/* v6: gold-bordered ornate panels */
+.panel { border: 4px solid transparent !important; background:
+  linear-gradient(#2c2f3c, #1d202a) padding-box,
+  linear-gradient(160deg, #ffe9a8, #c9962e 35%, #6a4410 60%, #f2d27a) border-box !important;
+  position: relative; }
+.panel h2 { border-bottom: 2px solid rgba(201,150,46,.55); padding-bottom: 8px; }
+.panel h3 { color: #f2c240; font-family: Georgia, serif; margin: 14px 0 6px; font-size: 18px; border-top: 1px solid rgba(201,150,46,.4); padding-top: 10px; }
+.tier-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.tier-cell { text-align: center; background: rgba(255,255,255,.07); border-radius: 10px; padding: 4px 2px; }
+.tier-cell canvas { box-shadow: none; display: block; margin: 0 auto; }
+.tier-cell small { display: block; font-size: 11px; line-height: 1.15; }
+.tier-cell b { display: block; font-size: 14px; color: #fff !important; }
+.setting { display: grid; grid-template-columns: 110px 1fr 46px; align-items: center; gap: 10px; margin: 14px 0; font-size: 17px; }
+.setting input[type=range] { width: 100%; accent-color: #f2c240; height: 28px; }
+.setting input[type=checkbox] { width: 26px; height: 26px; accent-color: #f2c240; }
+.setting span { text-align: right; font-weight: bold; color: #f2c240; }
+table.scores { width: 100%; border-collapse: collapse; font-size: 16px; }
+table.scores th { color: #f2c240; font-family: Georgia, serif; border-bottom: 2px solid rgba(201,150,46,.6); padding: 5px 4px; text-align: left; }
+table.scores td { padding: 6px 4px; border-bottom: 1px solid rgba(255,255,255,.08); }
+table.scores tr:nth-child(1) td:first-child { color: #ffd84a; font-weight: bold; }
+table.scores tr:nth-child(2) td:first-child { color: #d8dce4; font-weight: bold; }
+table.scores tr:nth-child(3) td:first-child { color: #e09a5a; font-weight: bold; }
+table.scores tr.me td { background: rgba(242,194,64,.22); }
+table.scores .r { text-align: right; }
+.name-input { display: block; width: 100%; box-sizing: border-box; font: inherit; font-size: 24px; text-align: center; padding: 10px; border-radius: 12px;
+  border: 2px solid #c9962e; background: #12141a; color: #fff; user-select: text; -webkit-user-select: text; }

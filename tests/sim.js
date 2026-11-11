@@ -64,12 +64,12 @@ function run(policy, seed, items) {
     if (S.tray.concat(S.pocket).some((v) => v && (v & (v - 1)))) throw new Error('non power of 2 cannon');
     if (!S.over && !G.legalMoves(S).length) throw new Error('no legal move');
   }
-  return { turns: S.turn, level: S.level, score: S.score, over: S.over, maxT: Math.max(...S.tray, S.pocket), collected, lost, hits };
+  return { turns: S.turn, level: S.level, score: S.score, over: S.over, maxT: Math.max(...S.tray, S.pocket), collected, lost, hits, itemsUsed: Object.values(S.itemUsed).reduce((a, b) => a + b, 0) };
 }
 function stats(name, arr) {
   const q = (k, p) => { const s = arr.map((x) => x[k]).sort((a, b) => a - b); return s[Math.floor(p * (s.length - 1))]; };
   const avg = (k) => (arr.reduce((a, x) => a + x[k], 0) / arr.length);
-  console.log(`${name.padEnd(17)} over ${arr.filter((x) => x.over).length}/${arr.length} | turns ${avg('turns').toFixed(0)} (p10 ${q('turns', .1)} p90 ${q('turns', .9)}) | level ${avg('level').toFixed(1)} (p10 ${q('level', .1)} p90 ${q('level', .9)}) | score ${avg('score').toFixed(0)} | top cannon p50 ${q('maxT', .5)} | collected ${avg('collected').toFixed(0)} lost-to-override ${avg('lost').toFixed(1)}`);
+  console.log(`${name.padEnd(17)} over ${arr.filter((x) => x.over).length}/${arr.length} | turns ${avg('turns').toFixed(0)} (p10 ${q('turns', .1)} p90 ${q('turns', .9)}) | level ${avg('level').toFixed(1)} (p10 ${q('level', .1)} p90 ${q('level', .9)}) | score ${avg('score').toFixed(0)} | top cannon p50 ${q('maxT', .5)} | collected ${avg('collected').toFixed(0)} lost ${avg('lost').toFixed(1)} | items used ${avg('itemsUsed').toFixed(1)}`);
 }
 const bots = { random: [randomMove, false], simple: [simple, false], lookahead: [lookahead, false], lookaheadItems: [lookahead, true] };
 const only = process.argv[3];
