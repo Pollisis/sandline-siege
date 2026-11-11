@@ -18,7 +18,7 @@
   const fmt = (n) => (n >= 1e6 ? (n / 1e6).toFixed(n >= 1e7 ? 1 : 2) + 'M' : n >= 1e4 ? (n / 1e3).toFixed(n >= 1e5 ? 0 : 1) + 'K' : String(Math.round(n)));
 
   // ================= RASTER SPRITES (assets/*.webp) with procedural fallback =================
-  const ASSET_V = 9;
+  const ASSET_V = 10;
   const ASSETS = [...Array.from({ length: 12 }, (_, i) => 'cannon' + String(i + 1).padStart(2, '0')),
     'crawler', 'giant', 'queen', 'hatchling', 'eggs', 'orb', 'item_spray', 'item_fire', 'item_super', 'barricade', 'barricade_broken', 'bg', 'tile'];
   const IMG = {};
@@ -44,9 +44,9 @@
 
   // ================= CANNON TIERS (one design per merge level) =================
   const TIERS = [
-    { name: 'Driftwood Stub',  main: '#a8743e', dark: '#5e3a1a', light: '#e0b070', glow: '#ffd08a' },
-    { name: 'Iron Pot',        main: '#6c7380', dark: '#2e3239', light: '#b8c0cc', glow: '#d8e2f0' },
-    { name: 'Steel Longgun',   main: '#4f86c8', dark: '#1d3d68', light: '#a8d0fa', glow: '#6fb4ff' },
+    { name: 'Driftwood Stub',  main: '#d6b07a', dark: '#7a5428', light: '#f6e2b8', glow: '#ffe6b4' },
+    { name: 'Crimson Pot',     main: '#d42a3a', dark: '#6a0c16', light: '#ff9aa4', glow: '#ff5a6a' },
+    { name: 'Emerald Longgun', main: '#22b04a', dark: '#0c5a22', light: '#a2f5b4', glow: '#5cff88' },
     { name: 'Bronze Bell',     main: '#c38b3a', dark: '#6a4410', light: '#f6d690', glow: '#ffcf6a' },
     { name: 'Teal Spiker',     main: '#26b0a2', dark: '#0e5a52', light: '#90f2e4', glow: '#5ff0d8' },
     { name: 'Twin Amethyst',   main: '#9a5ae0', dark: '#45207f', light: '#d6b0ff', glow: '#b67cff' },

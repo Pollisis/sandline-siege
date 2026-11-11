@@ -13,7 +13,7 @@ Original canvas art, no build step. Play at https://pollisis.github.io/sandline-
 - Two log barricades are split down the middle of lane 3. A scorpion that reaches a barricade smashes it and leaves. One hit is free; the second hit ends the run.
 - 25 kills = next Defense Level: tougher scorpions, bigger field cannons, +5% points and one random power-up charge.
 - New scorpion HP = max(level curve, 0.4 x your firepower) with ±15% randomness, where firepower = all tray cannons + pocket. Stronger cannons bring stronger scorpions.
-- Every merge tier (1, 2, 4 ... 2048+) has its own cannon design and colour: Driftwood Stub, Iron Pot, Steel Longgun, Bronze Bell, Teal Spiker, Twin Amethyst, Violet Mortar, Copper Drake, Copper Gatling, Glass Crystal, Royal Gold, Sunburst.
+- Every merge tier (1, 2, 4 ... 2048+) has its own cannon design and colour: Driftwood Stub, Crimson Pot, Emerald Longgun, Bronze Bell, Teal Spiker, Twin Amethyst, Violet Mortar, Copper Drake, Copper Gatling, Glass Crystal, Royal Gold, Sunburst.
 - Power-ups are earned: you start with 1 Bug Spray and nothing else. Giants and Brood Queens drop a charge 40% of the time; every level-up gives one. Each power-up can be used at most 10 times per game. Using one is a free action. Bug Spray, Extra Firepower, Super Component. (No stamina/fuel system.)
 - Brood Queen: however she dies (exact kill, overkill, carry-through, Extra Firepower, Bug Spray), 3 Hatchlings with 20% of her HP appear where she fell on the next move. Surplus damage never hits them.
 
