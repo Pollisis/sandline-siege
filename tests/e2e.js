@@ -58,7 +58,9 @@ async function useItem(page, k) {
   const page = await ctx.newPage();
   page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errors.push('console.' + m.type() + ': ' + m.text()); });
   page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
-  await page.goto(url); await page.waitForTimeout(500);
+  page.on('response', (r) => { if (r.status() >= 400) errors.push('HTTP ' + r.status() + ' ' + r.url()); });
+  await page.goto(url); await page.waitForFunction(() => window.__sand && window.__sand.ready, null, { timeout: 30000 }); await page.waitForTimeout(300);
+  check((await page.evaluate(() => window.__sand.failedAssets.length)) === 0 && (await page.evaluate(() => window.SandArt.ASSETS.every((k) => window.SandArt.has(k)))), 'all raster sprites load (no missing assets)');
   await page.screenshot({ path: `${out}/01-mobile-howto.png` });
   await page.click('#ov-buttons .btn'); await page.waitForTimeout(300);
   let s = await st(page);
@@ -172,7 +174,7 @@ async function useItem(page, k) {
   const d = await (await browser.newContext({ viewport: { width: 1366, height: 900 } })).newPage();
   d.on('pageerror', (e) => errors.push('desktop pageerror: ' + e.message));
   d.on('console', (m) => { if (m.type() === 'error') errors.push('desktop console: ' + m.text()); });
-  await d.goto(url); await d.waitForTimeout(300); await d.click('#ov-buttons .btn');
+  await d.goto(url); await d.waitForFunction(() => window.__sand && window.__sand.ready, null, { timeout: 30000 }); await d.waitForTimeout(300); await d.click('#ov-buttons .btn');
   await play(d, 10, 'desktop');
   const gb = await d.evaluate(() => window.__sand.toScreen(window.__sand.W - 34, 108)); await d.mouse.click(gb.x, gb.y); await d.waitForTimeout(300);
   check((await d.textContent('#ov-title')) === 'Scorpion Guidebook', 'guidebook opens');
@@ -183,7 +185,7 @@ async function useItem(page, k) {
   // ---- iPad portrait, real touch tap-tap ----
   const ip = await (await browser.newContext({ viewport: { width: 820, height: 1180 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true })).newPage();
   ip.on('pageerror', (e) => errors.push('ipad pageerror: ' + e.message));
-  await ip.goto(url); await ip.waitForTimeout(300); await ip.click('#ov-buttons .btn');
+  await ip.goto(url); await ip.waitForFunction(() => window.__sand && window.__sand.ready, null, { timeout: 30000 }); await ip.waitForTimeout(300); await ip.click('#ov-buttons .btn');
   const m = await pickMove(ip), a = await pt(ip, m.from), b = await pt(ip, m.to);
   const t0 = (await st(ip)).turn;
   await ip.touchscreen.tap(a.x, a.y); await ip.waitForTimeout(100); await ip.touchscreen.tap(b.x, b.y); await ip.waitForTimeout(100); await idle(ip);

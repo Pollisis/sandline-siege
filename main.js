@@ -321,15 +321,21 @@
     bgCanvas = document.createElement('canvas'); bgCanvas.width = W * 2; bgCanvas.height = H * 2;
     const g = bgCanvas.getContext('2d'); g.scale(2, 2);
     let seed = 11; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+    const ART = window.SandArt, photo = ART.has('bg');
+    if (photo) { // painted desert backdrop, cropped to cover the board
+      const im = ART.IMG.bg, k = Math.max(W / im.naturalWidth, H / im.naturalHeight), dw = im.naturalWidth * k, dh = im.naturalHeight * k;
+      g.imageSmoothingQuality = 'high'; g.drawImage(im, (W - dw) / 2, (H - dh) / 2, dw, dh);
+    } else {
     // warm sand base
     g.fillStyle = lin(g, 0, 0, 0, H, [[0, '#eeb04a'], [0.45, '#f4be5a'], [1, '#e6a443']]); g.fillRect(0, 0, W, H);
+    }
     // grain texture: per-pixel noise at 1x, scaled up softly
-    { const n = document.createElement('canvas'); n.width = W; n.height = H; const ng = n.getContext('2d'), im = ng.createImageData(W, H), d = im.data;
+    if (!photo) { const n = document.createElement('canvas'); n.width = W; n.height = H; const ng = n.getContext('2d'), im = ng.createImageData(W, H), d = im.data;
       for (let i = 0; i < d.length; i += 4) { const v = rnd(); const dark = v < 0.5; d[i] = dark ? 150 : 255; d[i + 1] = dark ? 90 : 236; d[i + 2] = dark ? 30 : 190; d[i + 3] = (Math.abs(v - 0.5) * 2) ** 3 * 70; }
       ng.putImageData(im, 0, 0); g.drawImage(n, 0, 0); }
     g.save(); g.translate(0, OY);
     // wind ripples: paired dark/light arcs
-    for (let i = 0; i < 46; i++) {
+    for (let i = 0; i < (photo ? 0 : 46); i++) {
       const y = -OY + rnd() * H, x = rnd() * W, L = 30 + rnd() * 50, b = 4 + rnd() * 4;
       g.strokeStyle = 'rgba(190,118,36,.28)'; g.lineWidth = 2; g.beginPath(); g.moveTo(x - L, y); g.quadraticCurveTo(x, y - b, x + L, y); g.stroke();
       g.strokeStyle = 'rgba(255,236,180,.35)'; g.lineWidth = 1.4; g.beginPath(); g.moveTo(x - L + 4, y + 2.5); g.quadraticCurveTo(x, y - b + 2.5, x + L - 4, y + 2.5); g.stroke();
@@ -340,11 +346,11 @@
       g.fillStyle = rad(g, x - r * 0.3, y - r * 0.35, r * 0.1, r * 1.1, [[0, '#f6dcae'], [0.6, rnd() < 0.5 ? '#c49060' : '#b0805a'], [1, '#7a5030']]);
       g.beginPath(); g.ellipse(x, y, r, r * 0.72, rnd(), 0, 7); g.fill();
     };
-    for (let i = 0; i < 70; i++) pebble(rnd() * W, -OY + rnd() * H, 1.4 + rnd() * 3.2);
+    for (let i = 0; i < (photo ? 0 : 70); i++) pebble(rnd() * W, -OY + rnd() * H, 1.4 + rnd() * 3.2);
     // field tiles: soft bevelled squares
     for (let r = 0; r < ROWS; r++) for (let l = 0; l < LANES; l++) {
       const x = FX + l * LW, y = FY + r * CH;
-      g.fillStyle = lin(g, x, y, x, y + CH, [[0, 'rgba(255,222,146,.62)'], [1, 'rgba(250,206,120,.5)']]); rr(g, x + 2, y + 2, LW - 4, CH - 4, 5); g.fill();
+      g.fillStyle = lin(g, x, y, x, y + CH, photo ? [[0, 'rgba(255,226,160,.30)'], [1, 'rgba(250,206,120,.18)']] : [[0, 'rgba(255,222,146,.62)'], [1, 'rgba(250,206,120,.5)']]); rr(g, x + 2, y + 2, LW - 4, CH - 4, 5); g.fill();
       g.strokeStyle = 'rgba(255,244,210,.55)'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(x + 4, y + CH - 4); g.lineTo(x + 4, y + 4); g.lineTo(x + LW - 4, y + 4); g.stroke();
       g.strokeStyle = 'rgba(176,110,36,.45)'; g.beginPath(); g.moveTo(x + LW - 3, y + 5); g.lineTo(x + LW - 3, y + CH - 3); g.lineTo(x + 5, y + CH - 3); g.stroke();
       for (let k = 0; k < 4; k++) { g.fillStyle = 'rgba(190,120,40,.25)'; g.beginPath(); g.arc(x + 8 + rnd() * (LW - 16), y + 8 + rnd() * (CH - 16), 0.8 + rnd() * 1.2, 0, 7); g.fill(); }
@@ -355,6 +361,12 @@
     const tile = (cx, cy, size) => {
       const x = cx - size / 2, y = cy - size / 2;
       g.fillStyle = 'rgba(110,60,15,.35)'; rr(g, x + 2, y + 4, size, size, 8); g.fill();
+      if (ART.has('tile')) {
+        g.save(); rr(g, x, y, size, size, 8); g.clip(); g.imageSmoothingQuality = 'high'; g.drawImage(ART.IMG.tile, x - 2, y - 2, size + 4, size + 4); g.restore();
+        g.strokeStyle = '#7a4a14'; g.lineWidth = 2; rr(g, x, y, size, size, 8); g.stroke();
+        g.strokeStyle = 'rgba(255,236,190,.55)'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(x + 4, y + size - 8); g.lineTo(x + 4, y + 6); g.quadraticCurveTo(x + 4, y + 4, x + 8, y + 4); g.lineTo(x + size - 8, y + 4); g.stroke();
+        return;
+      }
       g.fillStyle = lin(g, x, y, x + size * 0.4, y + size, [[0, '#f6c06a'], [0.6, '#e8a650'], [1, '#d28c3a']]); rr(g, x, y, size, size, 8); g.fill();
       g.strokeStyle = '#8a5418'; g.lineWidth = 2; rr(g, x, y, size, size, 8); g.stroke();
       g.strokeStyle = 'rgba(255,236,190,.75)'; g.lineWidth = 2; g.beginPath(); g.moveTo(x + 4, y + size - 8); g.lineTo(x + 4, y + 6); g.quadraticCurveTo(x + 4, y + 4, x + 8, y + 4); g.lineTo(x + size - 8, y + 4); g.stroke();
@@ -427,6 +439,7 @@
       g.strokeStyle = '#a03a2a'; g.lineWidth = 4; g.beginPath(); g.moveTo(-36, 6); g.lineTo(36, 6); g.stroke();
       g.restore();
     };
+    if (!photo) {
     // left edge
     cactus(10, FY + 120, 0.75); tuft(26, FY + 40, 0.9); rock(8, FY + 300, 0.7); tuft(24, FY + 230, 0.8); cactus(14, FY + 470, 0.55);
     tuft(28, WC + 6, 0.7); rock(10, TY + 70, 0.6); tuft(20, TY + 160, 0.8);
@@ -435,6 +448,7 @@
     rock(W - 10, TY + 40, 0.55); tuft(W - 20, TY + 150, 0.8);
     // bottom camp (below the item bar, visible on tall screens)
     tent(60, BY + 150, 0.9); barrel(150, BY + 140, 0.9); barrel(176, BY + 150, 0.8); tuft(230, BY + 130, 1); rock(330, BY + 150, 0.9); barrel(W - 60, BY + 145, 0.9); cactus(W - 110, BY + 170, 0.6);
+    }
     g.restore();
   }
 
@@ -478,6 +492,16 @@
 
   function draw(t) {
     ctx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0);
+    if (typeof loading !== 'undefined' && loading) { // preload screen with progress bar
+      ctx.fillStyle = lin(ctx, 0, 0, 0, H, [[0, '#2c2218'], [1, '#120c08']]); ctx.fillRect(0, 0, W, H);
+      text(ctx, 'Sandline Siege', W / 2, H / 2 - 70, 40, '#ffe9b0', '#1a0e04', 'center', 'bold', 'Georgia, "Times New Roman", serif');
+      const bw = 300, bx = W / 2 - bw / 2, by = H / 2;
+      ctx.fillStyle = 'rgba(0,0,0,.5)'; rr(ctx, bx, by, bw, 22, 11); ctx.fill();
+      ctx.fillStyle = lin(ctx, 0, by, 0, by + 22, [[0, '#ffe08a'], [1, '#c9962e']]); rr(ctx, bx + 3, by + 3, Math.max(16, (bw - 6) * loading.p), 16, 8); ctx.fill();
+      ctx.strokeStyle = '#c9962e'; ctx.lineWidth = 2; rr(ctx, bx, by, bw, 22, 11); ctx.stroke();
+      text(ctx, `Loading ${Math.round(loading.p * 100)}%`, W / 2, by + 50, 18, '#f6ead2', null, 'center', 'normal');
+      return;
+    }
     if (!bgCanvas || bgH !== H) buildBg();
     ctx.save();
     if (shake > 0.5) ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
@@ -505,6 +529,7 @@
       bars.push([x, y + CH / 2 - 13, v.w === 2 ? 140 : 70, v.hp, v.maxHp, pop, v.fade ? Math.max(0, 1 - (t - v.fade) / 400) : 1]);
     }
     for (const e of eggs) { // Brood Queen eggs, wobbling until they hatch next move
+      if (window.SandArt.has('eggs')) { const wob = Math.sin(t / 80) * 0.05; ctx.save(); ctx.translate(e.x, e.y + 26); ctx.rotate(wob); window.SandArt.fitImg(ctx, window.SandArt.IMG.eggs, 0, 0, 82, 62); ctx.restore(); continue; }
       for (let i = 0; i < 3; i++) {
         const ox = e.x + (i - 1) * 22, oy = e.y + 8 + (i === 1 ? -6 : 0), wob = Math.sin(t / 90 + i * 2) * 0.18;
         ctx.save(); ctx.translate(ox, oy); ctx.rotate(wob);
@@ -724,7 +749,7 @@
 
   cv.addEventListener('pointerdown', (e) => {
     e.preventDefault(); audio();
-    if (dialogOpen() || !S) return;
+    if (dialogOpen() || !S || loading) return;
     const { x, y } = toLogical(e);
     const b = hitBtn(x, y);
     if (b) {
@@ -784,6 +809,12 @@
   resize();
   btnRects();
   newRun();
+  let loading = { p: 0 }, ready = false;
   requestAnimationFrame(frame);
-  if (!LS.get('seenHelp2', false)) howTo();
+  window.SandArt.loadAssets((p) => { loading.p = p; }).then((failed) => {
+    if (ready) return; ready = true; loading = null; bgCanvas = null;
+    window.__sand.failedAssets = failed;
+    if (!LS.get('seenHelp2', false)) howTo();
+  });
+  Object.defineProperty(window.__sand, 'ready', { get: () => ready });
 })();

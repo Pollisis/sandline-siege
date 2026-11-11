@@ -20,7 +20,8 @@ Original canvas art, no build step. Play at https://pollisis.github.io/sandline-
 ## Files
 - `game.js`: pure game logic (browser + Node)
 - `main.js`: animation, input, HUD, dialogs (settings, high scores)
-- `art.js`: original canvas art (12 cannon tiers cached as hi-res offscreen sprites, scorpions, barricades, icons)
+- `assets/`: original raster sprites (12 cannon tiers, 4 scorpions, eggs, glass orb, 3 power-ups, barricade intact/smashed, desert background, tray tile), AI-generated for this game, cut out to transparent WebP (~0.7 MB total)
+- `art.js`: preloads `assets/` (loading bar) and draws them; the original procedural canvas art stays as a fallback if any image fails to load
 - `audio.js`: original WebAudio music loop (D Phrygian-dominant oud, drone and doumbek, ~38 s) and sound effects; Music/SFX volume and mute saved in localStorage
 - `tests/unit.js`: rule checks; `tests/sim.js`: balance and invariant simulation; `tests/e2e.js`: Playwright browser test with screenshots
 

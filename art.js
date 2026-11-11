@@ -17,6 +17,31 @@
   }
   const fmt = (n) => (n >= 1e6 ? (n / 1e6).toFixed(n >= 1e7 ? 1 : 2) + 'M' : n >= 1e4 ? (n / 1e3).toFixed(n >= 1e5 ? 0 : 1) + 'K' : String(Math.round(n)));
 
+  // ================= RASTER SPRITES (assets/*.webp) with procedural fallback =================
+  const ASSET_V = 7;
+  const ASSETS = [...Array.from({ length: 12 }, (_, i) => 'cannon' + String(i + 1).padStart(2, '0')),
+    'crawler', 'giant', 'queen', 'hatchling', 'eggs', 'orb', 'item_spray', 'item_fire', 'item_super', 'barricade', 'barricade_broken', 'bg', 'tile'];
+  const IMG = {};
+  const has = (k) => !!(IMG[k] && IMG[k].naturalWidth);
+  function loadAssets(onProgress) {
+    return new Promise((resolve) => {
+      let done = 0; const n = ASSETS.length, failed = [];
+      const fin = () => { done++; if (onProgress) onProgress(done / n); if (done === n) resolve(failed); };
+      for (const k of ASSETS) {
+        const im = new Image(); im.decoding = 'async';
+        im.onload = () => { IMG[k] = im; fin(); };
+        im.onerror = () => { failed.push(k); fin(); };
+        im.src = `assets/${k}.webp?v=${ASSET_V}`;
+      }
+      setTimeout(() => resolve(failed), 20000); // never block the game on a slow network
+    });
+  }
+  // draw a sprite fitted into a w x h box, bottom-centred at (x, yb)
+  function fitImg(g, im, x, yb, w, h) {
+    const k = Math.min(w / im.naturalWidth, h / im.naturalHeight), dw = im.naturalWidth * k, dh = im.naturalHeight * k;
+    g.drawImage(im, x - dw / 2, yb - dh, dw, dh); return { dw, dh };
+  }
+
   // ================= CANNON TIERS (one design per merge level) =================
   const TIERS = [
     { name: 'Driftwood Stub',  main: '#a8743e', dark: '#5e3a1a', light: '#e0b070', glow: '#ffd08a' },
@@ -201,14 +226,17 @@
     g.restore();
   }
   function drawCannon(g, x, y, v, sc = 1, alpha = 1, showTag = true, t = 0) {
-    const idx = tierIdx(v), spr = cannonSprite(idx);
+    const idx = tierIdx(v), key = 'cannon' + String(idx + 1).padStart(2, '0'), raster = has(key);
     g.save(); g.globalAlpha = alpha;
     if (idx >= 10) { // live pulsing aura for the top tiers
       const p = 0.5 + 0.5 * Math.sin(t * 3);
       g.fillStyle = rad(g, x, y - 12 * sc, 4, (58 + p * 10) * sc, [[0, TIERS[idx].glow + '66'], [1, TIERS[idx].glow + '00']]);
       g.beginPath(); g.arc(x, y - 12 * sc, (58 + p * 10) * sc, 0, TAU); g.fill();
     }
-    g.drawImage(spr, x - OX * sc, y - OYY * sc, CW * sc, CHH * sc);
+    if (raster) {
+      g.fillStyle = 'rgba(70,35,5,.28)'; g.beginPath(); g.ellipse(x, y + 24 * sc, 34 * sc, 8 * sc, 0, 0, TAU); g.fill();
+      g.imageSmoothingQuality = 'high'; fitImg(g, IMG[key], x, y + 28 * sc, 90 * sc, 88 * sc);
+    } else { const spr = cannonSprite(idx); g.drawImage(spr, x - OX * sc, y - OYY * sc, CW * sc, CHH * sc); }
     g.restore();
     if (showTag) valueTag(g, x + 3 * sc, y + 33 * sc, v, sc, alpha);
   }
@@ -220,7 +248,16 @@
     giant:     { shell: '#8e6646', shell2: '#46301c', hi: '#d0a678', belly: '#b88a5e', claw: '#cfa67c', claw2: '#5e3e22', eye: '#ff8a3a', line: '#22140a' },
     queen:     { shell: '#3c3644', shell2: '#141018', hi: '#7a7088', belly: '#c4283a', claw: '#d83c3c', claw2: '#5a0a14', eye: '#ff4a4a', line: '#08060a' },
   };
+  const BUG_BOX = { crawler: [96, 92], hatchling: [70, 66], giant: [186, 118], queen: [186, 116] };
   function drawScorpion(g, cx, cy, type, t, sc = 1) {
+    if (has(type) && BUG_BOX[type]) {
+      const [bw, bh] = BUG_BOX[type], breathe = 1 + Math.sin(t * 2.4) * 0.018, sway = Math.sin(t * 1.7) * 0.025;
+      g.save(); g.translate(cx, cy + bh * sc / 2 - 6 * sc);
+      g.fillStyle = 'rgba(90,45,5,.25)'; g.beginPath(); g.ellipse(0, -4 * sc, bw * 0.42 * sc, bh * 0.14 * sc, 0, 0, TAU); g.fill();
+      g.rotate(sway); g.scale(breathe, 2 - breathe); g.imageSmoothingQuality = 'high';
+      fitImg(g, IMG[type], 0, 0, bw * sc, bh * sc);
+      g.restore(); return;
+    }
     const p = PAL[type];
     const s = (type === 'giant' ? 50 : type === 'queen' ? 46 : type === 'hatchling' ? 26 : 33) * sc;
     const wide = type === 'giant' || type === 'queen';
@@ -303,6 +340,15 @@
 
   // ================= FIELD CANNON BUBBLE =================
   function drawPickup(g, x, y, v, t, sc = 1) {
+    if (has('orb')) {
+      const bob = Math.sin(t * 3) * 2.5;
+      g.save(); g.translate(x, y + bob); g.scale(sc, sc);
+      g.fillStyle = 'rgba(20,60,120,.28)'; g.beginPath(); g.arc(0, 0, 27, 0, TAU); g.fill();
+      drawCannon(g, 0, 4, v, 0.44, 1, false);
+      g.globalCompositeOperation = 'lighter'; g.drawImage(IMG.orb, -33, -33, 66, 66); g.globalCompositeOperation = 'source-over';
+      g.restore();
+      valueTag(g, x, y + bob + 36 * sc, v, 0.85 * sc); return;
+    }
     g.save(); g.translate(x, y); g.scale(sc, sc);
     const r = 28, bob = Math.sin(t * 3) * 2.5; g.translate(0, bob);
     g.fillStyle = rad(g, 0, 0, 2, r + 12, [[0, 'rgba(120,200,255,0)'], [0.7, 'rgba(120,200,255,.3)'], [1, 'rgba(120,200,255,0)']]); g.beginPath(); g.arc(0, 0, r + 12, 0, TAU); g.fill();
@@ -327,6 +373,12 @@
 
   // ================= BARRICADE =================
   function drawBarricade(g, x0, x1, cy, broken) {
+    const key = broken ? 'barricade_broken' : 'barricade';
+    if (has(key)) {
+      const im = IMG[key], w = x1 - x0 + 10, h = Math.min(w * im.naturalHeight / im.naturalWidth, broken ? 50 : 58);
+      g.save(); g.fillStyle = 'rgba(90,45,5,.22)'; g.beginPath(); g.ellipse((x0 + x1) / 2, cy + h * 0.42, w * 0.46, 8, 0, 0, TAU); g.fill();
+      g.imageSmoothingQuality = 'high'; g.drawImage(im, x0 - 5, cy + h * 0.5 - h, w, h); g.restore(); return;
+    }
     g.save(); g.lineJoin = 'round'; g.lineCap = 'round';
     const logY = cy - 2;
     const log = (ax, ay, bx, by, r) => {
@@ -379,6 +431,7 @@
 
   // ================= ITEM ICONS =================
   function itemIcon(g, k, x, y, s = 1) {
+    if (has('item_' + k)) { g.save(); g.imageSmoothingQuality = 'high'; fitImg(g, IMG['item_' + k], x, y + 21 * s, 44 * s, 44 * s); g.restore(); return; }
     g.save(); g.translate(x, y); g.scale(s, s); g.lineWidth = 2; g.strokeStyle = OUT; g.lineJoin = 'round';
     if (k === 'spray') {
       g.fillStyle = lin(g, -11, 0, 11, 0, [[0, '#2a7a2a'], [0.45, '#8ee07a'], [1, '#1e5a1e']]); rr(g, -11, -8, 22, 28, 6); g.fill(); g.stroke();
@@ -399,5 +452,5 @@
     g.restore();
   }
 
-  window.SandArt = { TIERS, tierIdx, tierOf, rr, text, lin, rad, plaque, fmt, drawCannon, valueTag, cannonSprite, drawScorpion, drawPickup, hpBar, drawBarricade, itemIcon, shade };
+  window.SandArt = { IMG, has, loadAssets, fitImg, ASSETS, TIERS, tierIdx, tierOf, rr, text, lin, rad, plaque, fmt, drawCannon, valueTag, cannonSprite, drawScorpion, drawPickup, hpBar, drawBarricade, itemIcon, shade };
 })();
