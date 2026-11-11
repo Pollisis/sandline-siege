@@ -25,3 +25,13 @@ canvas { display: block; touch-action: none; border-radius: 6px; box-shadow: 0 0
 .stats div:nth-child(odd) { text-align: right; opacity: .8; }
 .stats div:nth-child(even) { font-weight: bold; }
 .big { font-size: 40px; text-align: center; font-weight: bold; color: #b24a12; margin: 4px 0; }
+.small { font-size: 14px !important; opacity: .85; }
+#wrap { background: #e8a845 !important; }
+.panel { background: linear-gradient(#2c2f3c, #1d202a) !important; color: #f3e6cc !important; border-color: #c9a25a !important; box-shadow: 0 10px 0 #0e0f14, 0 14px 30px rgba(0,0,0,.5) !important; }
+.panel h2 { color: #f2c240 !important; text-shadow: 0 2px 0 #000 !important; font-family: Georgia, "Times New Roman", serif; }
+.panel b { color: #f2c240; }
+.guide-row { background: rgba(255,255,255,.07) !important; }
+.guide-row canvas { background: #f3bd58 !important; }
+.guide-row b { color: #f2c240 !important; }
+.stats div:nth-child(even) { color: #fff; }
+.big { color: #f2c240 !important; }

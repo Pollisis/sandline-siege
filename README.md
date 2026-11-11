@@ -1,22 +1,22 @@
 # Sandline Siege
 
-A turn-based merge-defense browser game. Hold the desert outpost against waves of giant crawlers.
+A turn-based merge-defense browser game: hold the desert outpost against sand scorpions.
+Original canvas art, no build step. Play at https://pollisis.github.io/sandline-siege/
 
-**Play:** open `index.html` (any static host works, with no build step).
-
-## How to play
-- Drag a cannon onto an empty slot to move it, or onto a cannon with the same number to merge (8+8=16). Each drag is one turn.
-- After each turn every cannon fires up its lane, the bugs step one row closer, a new bug appears at the top, and a fresh cannon drops into your tray.
-- Slain bugs sometimes leave a bubble: tap it for a free cannon (doesn't use a turn).
-- Bugs in the bottom row headbutt your walls. Lose both walls and it's game over.
-- Every 25 kills raises the Defense Level: tougher bugs, +5% points bonus.
-- Items (free): Bug Spray, Extra Firepower, Super Component, Sand Bomb.
+## Rules
+- Field: 5 lanes x 6 rows. Your cannon tray: 5 x 2, plus a one-cannon **pocket** (bottom right).
+- You start with a single cannon of value 1.
+- Each turn, drag one cannon: onto an empty square (move), onto the same number (merge, which doubles it), or onto a different number (swap). The pocket follows the same rules.
+- After your move every tray cannon fires up its lane and hits the first thing in it. Then scorpions step one row and new things may appear at the top.
+- **Field cannons** (blue bubbles) march down with the scorpions. Shoot one to collect it into the pocket. Only one is collected per turn (highest value wins), and it replaces whatever is in the pocket. A field cannon that reaches the barricades disappears.
+- Two log barricades are split down the middle of lane 3. A scorpion that reaches a barricade smashes it and leaves. One hit is free; the second hit ends the run.
+- 25 kills = next Defense Level: tougher scorpions, bigger field cannons, +5% points.
+- Items, 10 uses each per game, free actions: Bug Spray, Extra Firepower, Super Component, Sand Bomb.
 
 ## Files
-- `game.js`: pure game logic (works in the browser and in Node)
-- `main.js`: canvas rendering, input, WebAudio sound effects
-- `tests/sim.js`: headless balance and invariant simulation (`node tests/sim.js 200`)
-- `tests/e2e.js`: Playwright browser test with screenshots (`node tests/e2e.js http://localhost:8765/ shots`)
+- `game.js`: pure game logic (browser + Node)
+- `main.js`: canvas art, animation, input, WebAudio
+- `tests/unit.js`: rule checks; `tests/sim.js`: balance and invariant simulation; `tests/e2e.js`: Playwright browser test with screenshots
 
-## Tuning knobs (game.js)
-`baseHp`, `spawnTurretValue`, `bubbleValue`, `BUBBLE_CHANCE`, `ITEM_DROP_CHANCE`, `WALL_HP`, `wallDmg`, `KILLS_PER_LEVEL`, spawn weights in `pickType`.
+## Tuning knobs (top of game.js)
+`HP_BASE`, `HP_GROWTH`, `pickupExp`, `PICKUP_CHANCE`, `PICKUP_DRY_TURNS`, `PICKUP_BONUS_CHANCE`, `ITEM_USES`, `KILLS_PER_LEVEL`, spawn weights in `pickType`, early spawn rates in `spawn`.
