@@ -2,8 +2,9 @@
 (() => {
   'use strict';
   const G = window.SandGame;
-  const W = 480, H = 964, LANES = G.LANES, ROWS = G.ROWS, LW = W / LANES;
-  const FY = 112, CH = 100, WY = FY + CH * ROWS, WH = 46, TY = WY + WH + 8, SH = 104, BY = TY + SH * 2 + 6, BH = 80;
+  const W = 500, H = 972, LANES = G.LANES, ROWS = G.ROWS, LW = W / LANES;
+  const FY = 112, CH = 86, WY = FY + CH * ROWS, WH = 46, TY = WY + WH + 8, SH = 100, BY = TY + SH * 2 + 6, BH = 80;
+  const wallMid = (wi) => (G.WALL_SPANS[wi][0] + G.WALL_SPANS[wi][1]) / 2 * LW;
   const cv = document.getElementById('game'), ctx = cv.getContext('2d');
   let scale = 1, dpr = 1;
 
@@ -70,7 +71,7 @@
     vis = new Map(); bubVis = new Map(); projectiles = []; floaters = []; particles = []; slotFx = {};
     toast = null; busy = false; mode = null; drag = null; shake = 0; wallFlash = [0, 0]; overShown = false;
     sync(0, true);
-    window.__sand = { get S() { return S; }, slotXY, rowY, LW, W, H, get busy() { return busy; }, toScreen };
+    window.__sand = { get S() { return S; }, slotXY, rowY, LW, W, H, FY, CH, TY, SH, BY, BH, get busy() { return busy; }, toScreen };
   }
 
   function sync(appearDelay, reconcile) {
@@ -149,12 +150,12 @@
         case 'moveT': slotFx[e.to] = { t: now(), kind: 'move' }; sfx.move(); break;
         case 'newTurret': slotFx[e.slot] = { t: now(), kind: 'new' }; sfx.spawnT(); break;
         case 'collect': slotFx[e.slot] = { t: now(), kind: 'new' }; { const s = slotXY(e.slot); floater(s.x, s.y - 40, 'NEW ' + e.value, '#7fe0ff', 24); } sfx.pop(); break;
-        case 'wallHit': wallFlash[e.wall] = now(); shake = Math.max(shake, 6); sfx.wall(); floater(e.wall === 0 ? LW : LW * 3, WY + 10, '-' + e.dmg, '#ff3b2f', 26); { const v = vis.get(e.id); if (v) v.bump = now(); } break;
-        case 'wallBreak': shake = 16; sfx.breakW(); puff(e.wall === 0 ? LW : LW * 3, WY + WH / 2, '#9a8a78', 30); showToast((e.wall === 0 ? 'West' : 'East') + ' wall has fallen!', 1800, '#ffb0a0'); break;
+        case 'wallHit': wallFlash[e.wall] = now(); shake = Math.max(shake, 6); sfx.wall(); floater(wallMid(e.wall) + (Math.random() * 30 - 15), WY + 10, '-' + (Math.round(e.dmg * 10) / 10), '#ff3b2f', 26); { const v = vis.get(e.id); if (v) v.bump = now(); } break;
+        case 'wallBreak': shake = 16; sfx.breakW(); puff(wallMid(e.wall), WY + WH / 2, '#9a8a78', 30); showToast((e.wall === 0 ? 'West' : 'East') + ' wall has fallen!', 1800, '#ffb0a0'); break;
         case 'levelUp': sfx.level(); showToast(`Defense Level ${e.level}!  Bonus +${e.bonus}%  (+1 ${G.ITEM_INFO[e.item].name})`, 2200, '#ffe14a'); break;
         case 'itemDrop': showToast('Found: ' + G.ITEM_INFO[e.item].name + '!', 1500, '#bff7a8'); sfx.pop(); break;
         case 'breach': showToast('A bug slipped through the breach!', 1200, '#ffb0a0'); break;
-        case 'repair': wallFlash[e.wall] = now(); puff(e.wall === 0 ? LW : LW * 3, WY + WH / 2, '#9cf08a', 20); break;
+        case 'repair': wallFlash[e.wall] = now(); puff(wallMid(e.wall), WY + WH / 2, '#9cf08a', 20); break;
         case 'pushedOff': { const v = vis.get(e.id); if (v) { if (e.pts) floater(ex(v), rowY(0), '+' + e.pts, '#ffe14a', 24); v.dying = true; v.row = -1.5; setTimeout(() => vis.delete(e.id), 400); } } break;
         case 'pass': showToast('No moves - turn passed', 1000); break;
       }
@@ -239,7 +240,7 @@
 
   function howTo() {
     dialog('How to Play', `<ol>
-      <li>Desert bugs crawl down the 4 lanes toward your two walls, one row per turn.</li>
+      <li>Desert bugs crawl down the 5 lanes toward your two walls, one row per turn.</li>
       <li><b>Drag</b> a cannon onto an empty slot to move it, or onto a cannon with the <b>same number</b> to merge them (8 + 8 = 16). Each drag is one turn.</li>
       <li>After every turn, all cannons fire straight up their lane, then the bugs step forward and a fresh cannon appears.</li>
       <li>Fallen bugs sometimes drop a <b>bubble</b>. Tap it to grab a free cannon (no turn used).</li>
@@ -256,7 +257,7 @@
     dialog('Bug Guidebook', rows + `<p style="font-size:14px">Bug HP grows with each Defense Level. Current base HP: <b>${G.baseHp(S.level)}</b>.</p>`, [{ label: 'Close' }]);
     ovB.querySelectorAll('canvas[data-type]').forEach((c) => {
       const g = c.getContext('2d'), t = c.dataset.type;
-      drawBug(g, c.width / 2, 38, t === 'giant' ? 40 : t === 'hatchling' ? 17 : t === 'queen' ? 28 : 25, t, 0);
+      drawBug(g, c.width / 2, 38, t === 'giant' ? 40 : t === 'hatchling' ? 17 : t === 'queen' ? 36 : 25, t, 0);
     });
   }
   function gameOver() {
@@ -386,7 +387,7 @@
     };
     const rock = (x, y, s) => { g.fillStyle = '#a8876a'; g.strokeStyle = '#6a4e36'; g.lineWidth = 2.5; g.beginPath(); g.ellipse(x, y, 16 * s, 10 * s, 0, 0, Math.PI * 2); g.fill(); g.stroke(); g.fillStyle = 'rgba(255,255,255,.25)'; g.beginPath(); g.ellipse(x - 5 * s, y - 3 * s, 6 * s, 3 * s, 0, 0, Math.PI * 2); g.fill(); };
     g.globalAlpha = 0.55;
-    cactus(18, FY + 60, 0.6); cactus(W - 16, FY + 250, 0.55); cactus(14, FY + 400, 0.5); rock(W - 20, FY + 90, 0.7); rock(22, FY + 230, 0.6); rock(W - 26, FY + 440, 0.8);
+    cactus(16, FY + 60, 0.55); cactus(W - 14, FY + 250, 0.5); cactus(12, FY + 420, 0.45); rock(W - 18, FY + 90, 0.6); rock(20, FY + 230, 0.55); rock(W - 22, FY + 470, 0.7);
     g.globalAlpha = 1;
     // tray area: packed earth outpost floor
     const tg = g.createLinearGradient(0, WY + WH, 0, H); tg.addColorStop(0, '#b4773d'); tg.addColorStop(1, '#8a5428');
@@ -398,8 +399,8 @@
     // slots
     for (let i = 0; i < G.SLOTS; i++) {
       const { x, y } = slotXY(i);
-      g.fillStyle = 'rgba(60,30,8,.35)'; rr(g, x - 52, y - 47, 104, 94, 18); g.fill();
-      g.strokeStyle = 'rgba(255,220,160,.25)'; g.lineWidth = 2; rr(g, x - 52, y - 47, 104, 94, 18); g.stroke();
+      g.fillStyle = 'rgba(60,30,8,.35)'; rr(g, x - 46, y - 45, 92, 90, 16); g.fill();
+      g.strokeStyle = 'rgba(255,220,160,.25)'; g.lineWidth = 2; rr(g, x - 46, y - 45, 92, 90, 16); g.stroke();
     }
     // bottom bar
     g.fillStyle = '#5b3010'; g.fillRect(0, BY - 2, W, H - BY + 2);
@@ -479,7 +480,7 @@
       const x = ex(v);
       let y = rowY(v.dRow);
       if (v.bump && t - v.bump < 250) y += Math.sin((t - v.bump) / 250 * Math.PI) * 14;
-      const s = v.w === 2 ? 46 : v.type === 'hatchling' ? 20 : v.type === 'queen' ? 32 : 28;
+      const s = v.type === 'giant' ? 40 : v.type === 'queen' ? 36 : v.type === 'hatchling' ? 19 : 25;
       const pop = Math.min(1, (t - v.appear) / 200);
       ctx.save();
       if (mode && mode.item === 'fire') { ctx.fillStyle = 'rgba(255,60,40,.18)'; rr(ctx, v.lane * LW + 4, rowY(v.dRow) - CH / 2 + 4, v.w * LW - 8, CH - 8, 14); ctx.fill(); }
@@ -487,7 +488,7 @@
       drawBug(ctx, x, y - 4, s, v.type, ts + v.seed);
       if (t - v.hitT < 120) { ctx.globalAlpha = 0.5; ctx.globalCompositeOperation = 'lighter'; drawBug(ctx, x, y - 4, s, v.type, ts + v.seed); ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1; }
       // HP bar
-      const bw = v.w === 2 ? 150 : 84, bx = x - bw / 2, by = rowY(v.dRow) + CH / 2 - 18, frac = Math.max(0, v.hp / v.maxHp);
+      const bw = v.w === 2 ? 150 : 80, bx = x - bw / 2, by = rowY(v.dRow) + CH / 2 - 18, frac = Math.max(0, v.hp / v.maxHp);
       ctx.fillStyle = 'rgba(40,15,5,.75)'; rr(ctx, bx - 2, by - 2, bw + 4, 16, 7); ctx.fill();
       ctx.fillStyle = frac > 0.5 ? '#6ad13a' : frac > 0.25 ? '#ffc531' : '#ff4a3a'; rr(ctx, bx, by, Math.max(4, bw * frac), 12, 6); ctx.fill();
       text(ctx, String(Math.max(0, Math.ceil(v.hp))), x, by + 6, 13, '#fff', '#2a0e00');
@@ -495,8 +496,8 @@
     }
 
     // walls
-    G.WALLS.forEach((lanes, wi) => {
-      const x0 = lanes[0] * LW + 4, w = lanes.length * LW - 8, Wl = S.walls[wi], flash = t - wallFlash[wi] < 180;
+    G.WALL_SPANS.forEach((span, wi) => {
+      const x0 = span[0] * LW + (wi === 0 ? 4 : 3), w = (span[1] - span[0]) * LW - 7, Wl = S.walls[wi], flash = t - wallFlash[wi] < 180;
       if (Wl.hp > 0) {
         ctx.fillStyle = flash ? '#fff0d0' : '#b9a48a'; ctx.strokeStyle = '#5a4630'; ctx.lineWidth = 3;
         rr(ctx, x0, WY + 4, w, WH - 8, 8); ctx.fill(); ctx.stroke();
@@ -505,10 +506,10 @@
         // crenellations
         ctx.fillStyle = flash ? '#fff0d0' : '#c9b498';
         for (let bx = x0 + 6; bx < x0 + w - 20; bx += 34) { rr(ctx, bx, WY - 4, 20, 12, 3); ctx.fill(); ctx.strokeStyle = '#5a4630'; ctx.stroke(); }
-        const frac = Wl.hp / Wl.max, bw = w - 40, bx = x0 + 20, by = WY + WH / 2 - 7;
+        const frac = Wl.hp / Wl.max, bw = w - 30, bx = x0 + 15, by = WY + WH / 2 - 7;
         ctx.fillStyle = 'rgba(30,10,0,.7)'; rr(ctx, bx - 2, by - 2, bw + 4, 18, 8); ctx.fill();
         ctx.fillStyle = frac > 0.5 ? '#4fd14a' : frac > 0.25 ? '#ffc531' : '#ff4a3a'; rr(ctx, bx, by, Math.max(6, bw * frac), 14, 7); ctx.fill();
-        text(ctx, `${Wl.hp}/${Wl.max}`, bx + bw / 2, by + 7, 13, '#fff', '#2a0e00');
+        text(ctx, `${Math.ceil(Wl.hp)}/${Wl.max}`, bx + bw / 2, by + 7, 13, '#fff', '#2a0e00');
       } else {
         ctx.fillStyle = '#8a7a66';
         for (let i = 0; i < 9; i++) { ctx.beginPath(); ctx.ellipse(x0 + 12 + i * (w - 24) / 8, WY + WH / 2 + ((i * 7) % 11) - 4, 12, 8, i, 0, 7); ctx.fill(); }
@@ -524,8 +525,8 @@
       let sc = 1; const fx = slotFx[i];
       if (fx) { const k = (t - fx.t) / 300; if (k < 1) sc = fx.kind === 'merge' ? 1 + Math.sin(k * Math.PI) * 0.3 : fx.kind === 'new' ? 0.3 + 0.7 * Math.min(1, k * 1.4) + Math.sin(k * Math.PI) * 0.1 : 1; }
       const isSel = (drag && drag.from === i) || tapSel === i;
-      if (mode && mode.item === 'super' && v <= 32) { ctx.strokeStyle = '#ffe14a'; ctx.lineWidth = 4; rr(ctx, x - 50, y - 45, 100, 90, 16); ctx.stroke(); }
-      if (isSel) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 4; rr(ctx, x - 50, y - 45, 100, 90, 16); ctx.stroke(); }
+      if (mode && mode.item === 'super' && v <= 32) { ctx.strokeStyle = '#ffe14a'; ctx.lineWidth = 4; rr(ctx, x - 45, y - 44, 90, 88, 14); ctx.stroke(); }
+      if (isSel) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 4; rr(ctx, x - 45, y - 44, 90, 88, 14); ctx.stroke(); }
       drawCannon(ctx, x, y + 4, v, sc);
     }
     // drop hints while dragging
@@ -536,7 +537,7 @@
         const ok = !S.tray[i] || S.tray[i] === v; if (!ok) continue;
         const { x, y } = slotXY(i);
         ctx.strokeStyle = S.tray[i] ? '#ffe14a' : 'rgba(255,255,255,.7)'; ctx.lineWidth = 3; ctx.setLineDash([8, 6]);
-        rr(ctx, x - 50, y - 45, 100, 90, 16); ctx.stroke(); ctx.setLineDash([]);
+        rr(ctx, x - 45, y - 44, 90, 88, 14); ctx.stroke(); ctx.setLineDash([]);
       }
     }
 

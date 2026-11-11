@@ -5,15 +5,19 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  const LANES = 4, ROWS = 5, SLOTS = 8, KILLS_PER_LEVEL = 25, WALL_HP = 30;
-  const WALLS = [[0, 1], [2, 3]]; // West wall guards lanes 1-2, East wall guards lanes 3-4
-  const laneWall = (l) => (l <= 1 ? 0 : 1);
+  const LANES = 5, ROWS = 6, SLOTS = 10, KILLS_PER_LEVEL = 25, WALL_HP = 40;
+  // Two barricades split down the middle of lane 3 (index 2):
+  // West covers lanes 1-2 + half of lane 3, East covers half of lane 3 + lanes 4-5.
+  const WALLS = [[0, 1, 2], [2, 3, 4]];
+  const WALL_SPANS = [[0, 2.5], [2.5, 5]]; // in lane units, for drawing
+  const laneWalls = (l) => (l < 2 ? [0] : l > 2 ? [1] : [0, 1]);
+  const laneWall = (l) => laneWalls(l)[0];
 
   const TYPES = {
     crawler:   { name: 'Dune Crawler',  w: 1, pts: 100, hp: 1.0, dmg: 2, desc: 'Common desert crawler. Takes one lane.' },
     giant:     { name: 'Giant Crawler', w: 2, pts: 200, hp: 3.0, dmg: 4, desc: 'Huge and armored. Spans two lanes, so cannons in both lanes hit it.' },
-    queen:     { name: 'Brood Queen',   w: 1, pts: 200, hp: 2.4, dmg: 3, desc: 'When slain she bursts into 3 Hatchlings (20% of her HP each) in the lanes around her.' },
-    hatchling: { name: 'Hatchling',     w: 1, pts: 60,  hp: 0.2, dmg: 1, desc: 'Small and quick to squash. Counts as a kill.' },
+    queen:     { name: 'Brood Queen',   w: 2, pts: 200, hp: 2.6, dmg: 4, desc: 'When slain she bursts into 3 Hatchlings (20% of her HP each) side by side where she fell.' },
+    hatchling: { name: 'Hatchling',     w: 1, pts: 60,  hp: 0.2, dmg: 2, desc: 'Small and quick to squash. Counts as a kill.' },
   };
   const ITEMS = ['spray', 'fire', 'super', 'bomb'];
   const ITEM_INFO = {
@@ -34,11 +38,11 @@
   }
 
   // Tunables
-  const baseHp = (level) => Math.round(26 * Math.pow(1.22, level - 1));
+  const baseHp = (level) => Math.round(30 * Math.pow(1.27, level - 1));
   const bonusPct = (level) => 5 * (level - 1);
   const spawnTurretValue = (level) => Math.pow(2, 1 + Math.min(4, Math.floor((level - 1) / 4))); // 2,4,8..
-  const bubbleValue = (level) => spawnTurretValue(level) * 4;
-  const BUBBLE_CHANCE = 0.22, BUBBLE_TTL = 4, ITEM_DROP_CHANCE = 0.04;
+  const bubbleValue = (level) => spawnTurretValue(level) * 2;
+  const BUBBLE_CHANCE = 0.12, BUBBLE_TTL = 4, ITEM_DROP_CHANCE = 0.04;
   const wallDmg = (type, level) => TYPES[type].dmg + Math.floor((level - 1) / 4);
   const totalAttack = (S) => S.tray.reduce((a, b) => a + b, 0);
   const lanesOf = (e) => (e.w === 2 ? [e.lane, e.lane + 1] : [e.lane]);
@@ -48,14 +52,14 @@
     const S = {
       seed, level: 1, kills: 0, totalKills: 0, score: 0, turn: 0,
       walls: [{ hp: WALL_HP, max: WALL_HP }, { hp: WALL_HP, max: WALL_HP }],
-      tray: [4, 2, 4, 2, 2, 2, 0, 0], // index = row*4 + lane, row 0 = front (nearest wall)
+      tray: [4, 2, 4, 2, 4, 2, 2, 0, 0, 0], // index = row*5 + lane, row 0 = front (nearest wall)
       enemies: [], bubbles: [],
       items: { spray: 1, fire: 1, super: 1, bomb: 1 },
       over: false, nextId: 1,
     };
     Object.defineProperty(S, 'rand', { value: makeRng(seed), enumerable: false, writable: true });
     spawnEnemy(S, 'crawler', 1, 0, []);
-    spawnEnemy(S, 'crawler', 2, 1, []);
+    spawnEnemy(S, 'crawler', 3, 1, []);
     return S;
   }
 
@@ -100,7 +104,11 @@
     if (e.type === 'queen') {
       const hp = Math.max(1, Math.round(e.maxHp * 0.2));
       const L = e.lane, R = e.row;
-      const cand = [[R, L], [R, L - 1], [R, L + 1], [R, L - 2], [R, L + 2], [R - 1, L], [R - 1, L - 1], [R - 1, L + 1], [R + 1, L - 1], [R + 1, L + 1]];
+      // 3 hatchlings side by side in the same row, covering her 2 lanes (e.g. lanes 4-5 -> 3,4,5)
+      const starts = [L - 1, L].filter((st) => st >= 0 && st + 2 < LANES);
+      starts.sort((a, b) => [0, 1, 2].filter((k) => cellsFree(S, R, b + k, 1)).length - [0, 1, 2].filter((k) => cellsFree(S, R, a + k, 1)).length || (S.rand() - 0.5));
+      const st = starts[0];
+      const cand = [[R, st], [R, st + 1], [R, st + 2], [R - 1, L], [R - 1, L + 1], [R + 1, L], [R + 1, L + 1], [R - 1, st], [R - 1, st + 2]];
       let n = 0;
       for (const [r, l] of cand) {
         if (n >= 3) break;
@@ -184,12 +192,16 @@
     const sorted = S.enemies.slice().sort((a, b) => b.row - a.row);
     for (const e of sorted) {
       if (e.row !== ROWS - 1) continue;
-      const ws = [...new Set(lanesOf(e).map(laneWall))].filter((w) => S.walls[w].hp > 0);
+      // Damage is shared equally by the intact walls this bug touches (lane 3 touches both).
+      const ws = [...new Set(lanesOf(e).flatMap(laneWalls))].filter((w) => S.walls[w].hp > 0);
       if (!ws.length) { S.enemies.splice(S.enemies.indexOf(e), 1); ev.push({ type: 'breach', id: e.id }); continue; }
-      const wi = ws[0], d = wallDmg(e.type, S.level), W = S.walls[wi];
-      W.hp = Math.max(0, W.hp - d);
-      ev.push({ type: 'wallHit', wall: wi, dmg: d, id: e.id });
-      if (W.hp === 0) ev.push({ type: 'wallBreak', wall: wi });
+      const d = wallDmg(e.type, S.level) / ws.length;
+      for (const wi of ws) {
+        const W = S.walls[wi];
+        W.hp = Math.max(0, W.hp - d);
+        ev.push({ type: 'wallHit', wall: wi, dmg: d, id: e.id });
+        if (W.hp === 0) ev.push({ type: 'wallBreak', wall: wi });
+      }
     }
     for (const e of sorted) {
       if (!S.enemies.includes(e) || e.row >= ROWS - 1) continue;
@@ -291,7 +303,7 @@
     return { ok: true, events: r.events.concat(fire(S), advance(S)) };
   }
 
-  return { LANES, ROWS, SLOTS, KILLS_PER_LEVEL, WALL_HP, WALLS, TYPES, ITEMS, ITEM_INFO, laneWall,
+  return { LANES, ROWS, SLOTS, KILLS_PER_LEVEL, WALL_HP, WALLS, WALL_SPANS, laneWalls, TYPES, ITEMS, ITEM_INFO, laneWall,
     newGame, playerMove, fire, advance, useItem, collectBubble, takeTurn, hasLegalMove, targetInLane,
     totalAttack, bonusPct, baseHp, spawnTurretValue, lanesOf, makeRng };
 });

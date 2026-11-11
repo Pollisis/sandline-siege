@@ -32,7 +32,7 @@ async function playTurns(page, n, log) {
     if (bub) { const before = await page.evaluate(() => window.__sand.S.bubbles.length); await page.mouse.click(bub.x, bub.y); await page.waitForTimeout(100); if ((await page.evaluate(() => window.__sand.S.bubbles.length)) < before) bubbles++; }
     const turn0 = await page.evaluate(() => window.__sand.S.turn);
     const m = await pickMove(page);
-    if (!m) { const p = await screenPt(page, 240, 666 + 104); await page.mouse.click(p.x, p.y); passes++; }
+    if (!m) { const p = await page.evaluate(() => { const z = window.__sand; return z.toScreen(z.W / 2, z.TY + z.SH); }); await page.mouse.click(p.x, p.y); passes++; }
     else { await drag(page, m.from, m.to); m.kind === 'merge' ? merges++ : moves++; }
     await page.waitForTimeout(80); await idle(page);
     const turn1 = await page.evaluate(() => window.__sand.S.turn);
@@ -56,11 +56,11 @@ async function playTurns(page, n, log) {
   await page.screenshot({ path: `${out}/02-mobile-start.png` });
   await playTurns(page, 14, log);
   // Use the Bomb item: click item button, confirm, tap a tile with a bug
-  const bombBtn = await page.evaluate(() => { const iw = 84, gap = 6, start = 240 - (iw * 4 + gap * 3) / 2; return window.__sand.toScreen(start + 3 * (iw + gap) + 42, 880 + 40); });
+  const bombBtn = await page.evaluate(() => { const z = window.__sand, iw = 84, gap = 6, start = z.W / 2 - (iw * 4 + gap * 3) / 2; return z.toScreen(start + 3 * (iw + gap) + 42, z.BY + z.BH / 2); });
   await page.mouse.click(bombBtn.x, bombBtn.y); await page.waitForTimeout(200);
   const dlg = await page.textContent('#ov-title'); log.push('item dialog: ' + dlg);
   await page.click('#ov-buttons .btn:not(.alt)');
-  const tgt = await page.evaluate(() => { const S = window.__sand.S; const e = S.enemies.slice().sort((a, b) => b.row - a.row)[0]; return { pt: window.__sand.toScreen(e.lane * 120 + 60, window.__sand.rowY(e.row)), hp: S.enemies.reduce((a, x) => a + x.hp, 0), bombs: S.items.bomb }; });
+  const tgt = await page.evaluate(() => { const S = window.__sand.S; const e = S.enemies.slice().sort((a, b) => b.row - a.row)[0]; return { pt: window.__sand.toScreen(e.lane * window.__sand.LW + window.__sand.LW / 2, window.__sand.rowY(e.row)), hp: S.enemies.reduce((a, x) => a + x.hp, 0), bombs: S.items.bomb }; });
   await page.mouse.click(tgt.pt.x, tgt.pt.y); await page.waitForTimeout(150);
   const after = await page.evaluate(() => ({ hp: window.__sand.S.enemies.reduce((a, x) => a + x.hp, 0), bombs: window.__sand.S.items.bomb }));
   log.push(`bomb: total bug HP ${tgt.hp} -> ${after.hp}, bombs ${tgt.bombs} -> ${after.bombs}`);
@@ -80,7 +80,7 @@ async function playTurns(page, n, log) {
   log.push(`level-up: level ${lvl0} -> ${lvl.level}, kill counter now ${lvl.kills}/25`);
   // ---- force game over: weaken walls and park bugs at the wall ----
   await page.evaluate(() => { const S = window.__sand.S; S.walls.forEach((w) => (w.hp = 1)); S.enemies.length = 0;
-    S.enemies.push({ id: 9001, type: 'crawler', lane: 0, row: 4, w: 1, hp: 99999, maxHp: 99999 }, { id: 9002, type: 'crawler', lane: 3, row: 4, w: 1, hp: 99999, maxHp: 99999 }); });
+    const R = window.SandGame.ROWS - 1; S.enemies.push({ id: 9001, type: 'crawler', lane: 0, row: R, w: 1, hp: 99999, maxHp: 99999 }, { id: 9002, type: 'crawler', lane: 4, row: R, w: 1, hp: 99999, maxHp: 99999 }); });
   await playTurns(page, 2, log);
   await page.waitForTimeout(1300);
   const overTitle = await page.evaluate(() => !document.getElementById('overlay').classList.contains('hidden') && document.getElementById('ov-title').textContent);
@@ -99,7 +99,7 @@ async function playTurns(page, n, log) {
   await dp.click('#ov-buttons .btn');
   await playTurns(dp, 10, log);
   // guidebook
-  const gb = await dp.evaluate(() => window.__sand.toScreen(480 - 31, 31)); await dp.mouse.click(gb.x, gb.y); await dp.waitForTimeout(300);
+  const gb = await dp.evaluate(() => window.__sand.toScreen(window.__sand.W - 31, 31)); await dp.mouse.click(gb.x, gb.y); await dp.waitForTimeout(300);
   log.push('guide dialog: ' + await dp.textContent('#ov-title'));
   await dp.screenshot({ path: `${out}/06-desktop-guide.png` });
   await dp.click('#ov-buttons .btn'); await dp.waitForTimeout(200);
