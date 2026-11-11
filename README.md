@@ -6,6 +6,7 @@ Original canvas art, no build step. Play at https://pollisis.github.io/sandline-
 ## Rules
 - Field: 5 lanes x 6 rows. Your cannon tray: 5 x 2, plus a one-cannon **pocket** (bottom right).
 - You start with a single cannon of value 1.
+- Overkill carries through: leftover damage from a kill keeps going to the next target in the lane (field cannons are collected without absorbing damage).
 - Each turn, drag one cannon: onto an empty square (move), onto the same number (merge, which doubles it), or onto a different number (swap). The pocket follows the same rules.
 - After your move every tray cannon fires up its lane and hits the first thing in it. Then scorpions step one row and new things may appear at the top.
 - **Field cannons** (blue bubbles) march down with the scorpions. Shoot one to collect it into the pocket. Only one is collected per turn (highest value wins), and it replaces whatever is in the pocket. A field cannon that reaches the barricades disappears.

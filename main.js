@@ -122,25 +122,25 @@
     for (const e of evs) if (e.type === 'kill') killPts[e.id] = e.pts;
     for (const e of evs) {
       if (e.type !== 'shot') continue;
-      const s = slotXY(e.slot), v = e.targetId ? vis.get(e.targetId) : null;
-      const delay = (k++) * 45, dur = 260;
-      if (v && (e.killed || e.pickup)) v.dying = true;
+      const s = slotXY(e.slot), hits = e.hits || [];
+      for (const h of hits) { const v = vis.get(h.targetId); if (v && (h.killed || h.pickup)) v.dying = true; }
+      const lastRow = hits.length ? (e.surplus > 0 ? -0.6 : hits[hits.length - 1].row) : -0.6;
+      const delay = (k++) * 45, dur = 230 + 40 * Math.max(0, hits.length - 1);
       const tr = tier(e.dmg);
-      projectiles.push({ x0: s.x, y0: s.y - 36, targetId: e.targetId, t0: now() + delay, dur, color: tr.glow, r: Math.min(13, 5 + Math.log2(e.dmg + 1) * 0.9), done: false,
-        onHit: () => {
-          const vv = e.targetId ? vis.get(e.targetId) : null;
-          if (!vv) return;
-          if (e.pickup) {
-            vis.delete(e.targetId);
-            const won = coll && coll.id === e.targetId;
-            if (won) { flyers.push({ x0: ex(vv), y0: rowY(vv.dRow), t0: now(), dur: 520, value: vv.value }); sfx.collect(); }
+      const segs = hits.map((h) => ({ ...h, fired: false }));
+      projectiles.push({ x0: s.x, y0: s.y - 36, t0: now() + delay, dur, color: tr.glow, r: Math.min(13, 5 + Math.log2(e.dmg + 1) * 0.9), done: false, y1: rowY(lastRow), segs,
+        onSeg: (h) => {
+          const vv = vis.get(h.targetId); if (!vv) return;
+          if (h.pickup) {
+            vis.delete(h.targetId);
+            if (coll && coll.id === h.targetId) { flyers.push({ x0: ex(vv), y0: rowY(vv.dRow), t0: now(), dur: 520, value: vv.value }); sfx.collect(); }
             else { puff(ex(vv), rowY(vv.dRow), '#9fd4ff', 12); floater(ex(vv), rowY(vv.dRow) - 20, 'Lost', '#d0e8ff', 20); }
             return;
           }
-          vv.hp = Math.max(0, vv.hp - e.dmg); vv.hitT = now();
-          floater(ex(vv) + (Math.random() * 30 - 15), rowY(vv.dRow) - 14, '-' + fmt(e.dmg));
+          vv.hp = Math.max(0, vv.hp - h.dmg); vv.hitT = now();
+          floater(ex(vv) + (Math.random() * 30 - 15), rowY(vv.dRow) - 14, '-' + fmt(h.dmg));
           sfx.hit();
-          if (e.killed) killVis(e.targetId, killPts[e.targetId]);
+          if (h.killed) killVis(h.targetId, killPts[h.targetId]);
         } });
       setTimeout(sfx.shoot, delay);
       end = Math.max(end, now() + delay + dur);
@@ -253,7 +253,7 @@
     dialog('How to Play', `<ol>
       <li>Sand scorpions march down 6 rows toward your two log barricades, one row per turn.</li>
       <li>You start with a single cannon. <b>Drag</b> a cannon onto an empty square to move it, onto the <b>same number</b> to merge (8 + 8 = 16), or onto a different number to swap. Each drag is one turn.</li>
-      <li>After your move, every cannon fires straight up its lane and hits the first thing in it.</li>
+      <li>After your move, every cannon fires straight up its lane and hits the first thing in it. <b>Overkill carries through</b>: leftover damage keeps going to the next target behind it.</li>
       <li>Shoot the <b>field cannons</b> (blue bubbles) to collect them. A collected cannon drops into your <b>pocket</b> (bottom right). Only one can be collected per turn, and the highest value wins. A new one replaces whatever is in the pocket, so you can also park an unwanted cannon there.</li>
       <li>A scorpion that reaches a barricade smashes it. You get one free hit; the <b>second hit ends the siege</b>.</li>
       <li>Every 25 kills raises the Defense Level: tougher scorpions, bigger field cannons, +5% points.</li>
@@ -655,7 +655,12 @@
     particles = particles.filter((p) => p.t < p.life);
     for (const f of floaters) f.t += dt;
     floaters = floaters.filter((f) => f.t < f.life);
-    for (const p of projectiles) { if (t >= p.t0 && !p.done && (t - p.t0) / p.dur >= 1) { p.done = true; p.onHit(); } }
+    for (const p of projectiles) {
+      if (t < p.t0 || p.done) continue;
+      const k = Math.min(1, (t - p.t0) / p.dur), y = p.y0 + (p.y1 - p.y0) * k;
+      for (const h of p.segs) { if (h.fired) continue; const v = vis.get(h.targetId); const ty = v ? rowY(v.dRow) : rowY(h.row); if (y <= ty + 4 || k >= 1) { h.fired = true; p.onSeg(h); } else break; }
+      if (k >= 1) p.done = true;
+    }
     projectiles = projectiles.filter((p) => !p.done);
     for (const f of flyers) if (!f.done && t - f.t0 >= f.dur) { f.done = true; pocketShown = S.pocket; slotFx[POCKET] = { t: now(), kind: 'new' }; puff(POCK.x, POCK.y, '#9fd4ff', 14); }
     flyers = flyers.filter((f) => !f.done);
@@ -727,8 +732,7 @@
     // projectiles: glowing orbs
     for (const p of projectiles) {
       if (t < p.t0) continue;
-      const k = Math.min(1, (t - p.t0) / p.dur), v = p.targetId ? vis.get(p.targetId) : null;
-      const y1 = v ? rowY(v.dRow) : FY - 30, x = p.x0, y = p.y0 + (y1 - p.y0) * k;
+      const k = Math.min(1, (t - p.t0) / p.dur), x = p.x0, y = p.y0 + (p.y1 - p.y0) * k;
       ctx.fillStyle = rad(ctx, x, y, 1, p.r * 2.4, [[0, '#ffffff'], [0.3, p.color], [1, 'rgba(255,255,255,0)']]);
       ctx.beginPath(); ctx.arc(x, y, p.r * 2.4, 0, 7); ctx.fill();
       ctx.globalAlpha = 0.3; ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(x, y + 16, p.r * 0.8, 0, 7); ctx.fill(); ctx.beginPath(); ctx.arc(x, y + 30, p.r * 0.5, 0, 7); ctx.fill(); ctx.globalAlpha = 1;

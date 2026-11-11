@@ -21,7 +21,7 @@ S.tray[5] = 2; G.playerMove(S, { type: 'move', from: P, to: 5 }); assert(S.pocke
 // field cannons
 S = fresh(); S.tray[1] = 1; S.enemies.push({ id: 50, type: 'pickup', lane: 1, row: 2, w: 1, value: 4, hp: 1, maxHp: 1 }, { id: 51, type: 'crawler', lane: 1, row: 1, w: 1, hp: 5, maxHp: 5 });
 let ev = G.fire(S);
-assert(S.pocket === 4 && !S.enemies.some((e) => e.id === 50) && S.enemies.find((e) => e.id === 51).hp === 5, 'a shot collects the first field cannon in the lane (absorbing the shot), scorpion behind is untouched');
+assert(S.pocket === 4 && !S.enemies.some((e) => e.id === 50) && S.enemies.find((e) => e.id === 51).hp === 4, 'a shot collects the field cannon in front and carries on (full damage) to the scorpion behind');
 S = fresh(); S.pocket = 2; S.tray[0] = 1; S.tray[3] = 1;
 S.enemies.push({ id: 60, type: 'pickup', lane: 0, row: 1, w: 1, value: 8, hp: 1, maxHp: 1 }, { id: 61, type: 'pickup', lane: 3, row: 3, w: 1, value: 32, hp: 1, maxHp: 1 });
 ev = G.fire(S); const c = ev.find((e) => e.type === 'collect');
@@ -59,4 +59,24 @@ G.fire(S); const h = S.enemies.filter((e) => e.type === 'hatchling');
 assert(h.length === 3 && h.every((e) => e.row === 2) && h.map((e) => e.lane).sort().join() === '2,3,4' && h.every((e) => e.maxHp === 20), 'queen at lanes 4-5 splits into 3 hatchlings at lanes 3,4,5 with 20% HP');
 S = fresh(); S.enemies.push({ id: 96, type: 'giant', lane: 1, row: 1, w: 2, hp: 100, maxHp: 100 }); S.tray[1] = 8; S.tray[2] = 16; S.tray[7] = 4;
 G.fire(S); assert(S.enemies[0].hp === 72, 'giant is hit by cannons in both of its lanes (front + back rows)');
+
+// overkill carry-through
+S = fresh(); S.tray[0] = 10;
+S.enemies.push({ id: 200, type: 'crawler', lane: 0, row: 4, w: 1, hp: 3, maxHp: 3 }, { id: 201, type: 'crawler', lane: 0, row: 2, w: 1, hp: 4, maxHp: 4 }, { id: 202, type: 'crawler', lane: 0, row: 0, w: 1, hp: 9, maxHp: 9 });
+ev = G.fire(S);
+assert(!S.enemies.some((e) => e.id === 200 || e.id === 201) && S.enemies.find((e) => e.id === 202).hp === 6 && S.kills === 2, 'overkill carries through: 10 dmg kills 3hp + 4hp, remaining 3 hits the next (9 -> 6)');
+S = fresh(); S.tray[1] = 5;
+S.enemies.push({ id: 210, type: 'crawler', lane: 1, row: 3, w: 1, hp: 5, maxHp: 5 }, { id: 211, type: 'crawler', lane: 1, row: 1, w: 1, hp: 5, maxHp: 5 });
+G.fire(S); assert(!S.enemies.some((e) => e.id === 210) && S.enemies.find((e) => e.id === 211).hp === 5, 'exact kill leaves no surplus');
+S = fresh(); S.tray[0] = 8; S.tray[5] = 1;
+S.enemies.push({ id: 220, type: 'crawler', lane: 0, row: 4, w: 1, hp: 6, maxHp: 6 }, { id: 221, type: 'crawler', lane: 0, row: 3, w: 1, hp: 6, maxHp: 6 });
+G.fire(S); assert(S.enemies.find((e) => e.id === 221).hp === 3, 'each cannon shot carries separately (front 8: kills 6, 2 carry; back 1 hits next)');
+S = fresh(); S.tray[1] = 20;
+S.enemies.push({ id: 230, type: 'giant', lane: 1, row: 4, w: 2, hp: 12, maxHp: 12 }, { id: 231, type: 'crawler', lane: 1, row: 2, w: 1, hp: 5, maxHp: 5 }, { id: 232, type: 'crawler', lane: 2, row: 2, w: 1, hp: 5, maxHp: 5 });
+G.fire(S); assert(!S.enemies.some((e) => e.id === 230) && !S.enemies.some((e) => e.id === 231) && S.enemies.find((e) => e.id === 232).hp === 5, '2-wide bug: surplus continues only down the lane of the shot that killed it');
+S = fresh(); S.tray[3] = 10; S.tray[4] = 10;
+S.enemies.push({ id: 240, type: 'crawler', lane: 3, row: 4, w: 1, hp: 2, maxHp: 2 }, { id: 241, type: 'pickup', lane: 3, row: 3, w: 1, value: 4, hp: 1, maxHp: 1 }, { id: 242, type: 'crawler', lane: 3, row: 1, w: 1, hp: 20, maxHp: 20 },
+  { id: 243, type: 'pickup', lane: 4, row: 2, w: 1, value: 16, hp: 1, maxHp: 1 });
+ev = G.fire(S); const col = ev.find((e) => e.type === 'collect');
+assert(S.enemies.find((e) => e.id === 242).hp === 12 && col.value === 16 && col.lost.length === 1 && S.pocket === 16, 'surplus collects a field cannon and keeps going; still only one collect per turn (highest wins)');
 console.log('all unit checks passed');

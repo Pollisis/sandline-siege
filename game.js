@@ -161,23 +161,34 @@
     return { ok: true, events: ev };
   }
 
-  // ---- Turn step 1: every tray cannon fires up its lane at the first thing in it ----
+  // ---- Turn step 1: every tray cannon fires up its lane ----
+  // Overkill carries through: surplus damage continues to the next thing behind in the same lane.
+  // Field cannons are collected when the shot reaches them and do not absorb any damage.
   function fire(S) {
     const ev = [], got = [];
     for (let lane = 0; lane < LANES; lane++) {
       for (const r of [0, 1]) {
         const slot = r * LANES + lane, v = S.tray[slot];
         if (!v) continue;
-        const t = targetInLane(S, lane);
-        if (!t) { ev.push({ type: 'shot', slot, lane, dmg: v, targetId: null }); continue; }
-        if (t.type === 'pickup') {
-          ev.push({ type: 'shot', slot, lane, dmg: v, targetId: t.id, pickup: true });
-          S.enemies.splice(S.enemies.indexOf(t), 1);
-          got.push(t);
-          continue;
+        const hits = [];
+        let left = v;
+        const inLane = S.enemies.filter((e) => lane >= e.lane && lane < e.lane + e.w).sort((a, b) => b.row - a.row);
+        for (const t of inLane) {
+          if (left <= 0) break;
+          if (!S.enemies.includes(t)) continue;
+          if (t.type === 'pickup') {
+            S.enemies.splice(S.enemies.indexOf(t), 1);
+            got.push(t);
+            hits.push({ targetId: t.id, pickup: true, row: t.row });
+            continue;
+          }
+          const dmg = Math.min(left, t.hp), killed = t.hp <= left;
+          hits.push({ targetId: t.id, dmg, killed, row: t.row });
+          left -= dmg;
+          damage(S, t, dmg, ev);
         }
-        ev.push({ type: 'shot', slot, lane, dmg: v, targetId: t.id, killed: t.hp <= v });
-        damage(S, t, v, ev);
+        // first hit kept on the event for compatibility
+        ev.push({ type: 'shot', slot, lane, dmg: v, hits, targetId: hits.length ? hits[0].targetId : null, killed: !!(hits[0] && hits[0].killed), pickup: !!(hits[0] && hits[0].pickup), surplus: left });
       }
     }
     resolveCollected(S, got, ev);

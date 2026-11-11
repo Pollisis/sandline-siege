@@ -93,6 +93,13 @@ async function useItem(page, k) {
   await page.waitForTimeout(150); s = await st(page);
   const atk = s.tray.reduce((a, b) => a + b, 0);
   check(s.enemies.find((e) => e.id === 7001).hp === 999 - Math.ceil(atk / 2), 'Extra Firepower hits for 50% of total cannon attack');
+  // overkill carry-through in the browser
+  await calm(page);
+  await page.evaluate(() => { const S = window.__sand.S; S.tray = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]; S.tray[2] = 16; S.tray[0] = 1; S.pocket = 0;
+    S.enemies.push({ id: 7400, type: 'crawler', lane: 2, row: 4, w: 1, hp: 5, maxHp: 5 }, { id: 7401, type: 'crawler', lane: 2, row: 2, w: 1, hp: 6, maxHp: 6 }, { id: 7402, type: 'crawler', lane: 2, row: 0, w: 1, hp: 50, maxHp: 50 }); window.__sand.resync(); });
+  await drag(page, 0, 1); s = await st(page);
+  check(!s.enemies.some((e) => e.id === 7400 || e.id === 7401) && s.enemies.find((e) => e.id === 7402).hp === 45, 'overkill carry-through: 16 dmg kills 5hp + 6hp, 5 surplus hits the third scorpion');
+  await page.evaluate(() => { const S = window.__sand.S; S.tray = [8, 16, 32, 16, 8, 4, 2, 0, 0, 0]; });
   await play(page, 6, 'mid');
   await page.waitForTimeout(200);
   await page.screenshot({ path: `${out}/03-mobile-midgame.png` });
