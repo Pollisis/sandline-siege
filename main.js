@@ -4,9 +4,9 @@
   const G = window.SandGame;
   const LANES = G.LANES, ROWS = G.ROWS, POCKET = G.POCKET;
   // ---- logical layout (portrait) ----
-  const W = 540, BASE_H = 1100;
+  const W = 540, BASE_H = 1120;
   const FX = 40, LW = 92, FW = LW * LANES;          // field x-range 40..500
-  const HDR = 132, FY = 212, CH = 84, FB = FY + CH * ROWS; // field rows 212..716 (70px of sand above row 1 so boss tails clear the header)
+  const HDR = 132, FY = 232, CH = 84, FB = FY + CH * ROWS; // field rows 232..736 (90px of sand above row 1 so boss tails clear the header)
   const WC = FB + 30;                                 // barricade centre line
   const TY = FB + 62, SH = 94;                        // tray rows
   const BY = TY + SH * 2 + 14;                        // bottom bar (items + pocket)

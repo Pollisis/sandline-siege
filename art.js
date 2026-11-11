@@ -18,7 +18,7 @@
   const fmt = (n) => (n >= 1e6 ? (n / 1e6).toFixed(n >= 1e7 ? 1 : 2) + 'M' : n >= 1e4 ? (n / 1e3).toFixed(n >= 1e5 ? 0 : 1) + 'K' : String(Math.round(n)));
 
   // ================= RASTER SPRITES (assets/*.webp) with procedural fallback =================
-  const ASSET_V = 11;
+  const ASSET_V = 12;
   const ASSETS = [...Array.from({ length: 12 }, (_, i) => 'cannon' + String(i + 1).padStart(2, '0')),
     'crawler', 'giant', 'queen', 'hatchling', 'eggs', 'orb', 'item_spray', 'item_fire', 'item_super', 'barricade', 'barricade_broken', 'bg', 'tile'];
   const IMG = {};
@@ -248,7 +248,7 @@
     giant:     { shell: '#8e6646', shell2: '#46301c', hi: '#d0a678', belly: '#b88a5e', claw: '#cfa67c', claw2: '#5e3e22', eye: '#ff8a3a', line: '#22140a' },
     queen:     { shell: '#3c3644', shell2: '#141018', hi: '#7a7088', belly: '#c4283a', claw: '#d83c3c', claw2: '#5a0a14', eye: '#ff4a4a', line: '#08060a' },
   };
-  const BUG_BOX = { crawler: [104, 108], hatchling: [84, 84], giant: [190, 124], queen: [190, 140] };
+  const BUG_BOX = { crawler: [104, 108], hatchling: [84, 84], giant: [190, 136], queen: [200, 158] };
   function drawScorpion(g, cx, cy, type, t, sc = 1) {
     if (has(type) && BUG_BOX[type]) {
       const [bw, bh] = BUG_BOX[type], im = IMG[type], breathe = 1 + Math.sin(t * 2.4) * 0.018, sway = Math.sin(t * 1.7) * 0.025;
