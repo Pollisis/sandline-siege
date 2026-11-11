@@ -18,7 +18,7 @@
   const fmt = (n) => (n >= 1e6 ? (n / 1e6).toFixed(n >= 1e7 ? 1 : 2) + 'M' : n >= 1e4 ? (n / 1e3).toFixed(n >= 1e5 ? 0 : 1) + 'K' : String(Math.round(n)));
 
   // ================= RASTER SPRITES (assets/*.webp) with procedural fallback =================
-  const ASSET_V = 7;
+  const ASSET_V = 8;
   const ASSETS = [...Array.from({ length: 12 }, (_, i) => 'cannon' + String(i + 1).padStart(2, '0')),
     'crawler', 'giant', 'queen', 'hatchling', 'eggs', 'orb', 'item_spray', 'item_fire', 'item_super', 'barricade', 'barricade_broken', 'bg', 'tile'];
   const IMG = {};
@@ -248,14 +248,16 @@
     giant:     { shell: '#8e6646', shell2: '#46301c', hi: '#d0a678', belly: '#b88a5e', claw: '#cfa67c', claw2: '#5e3e22', eye: '#ff8a3a', line: '#22140a' },
     queen:     { shell: '#3c3644', shell2: '#141018', hi: '#7a7088', belly: '#c4283a', claw: '#d83c3c', claw2: '#5a0a14', eye: '#ff4a4a', line: '#08060a' },
   };
-  const BUG_BOX = { crawler: [96, 92], hatchling: [70, 66], giant: [186, 118], queen: [186, 116] };
+  const BUG_BOX = { crawler: [96, 92], hatchling: [70, 66], giant: [190, 120], queen: [190, 134] };
   function drawScorpion(g, cx, cy, type, t, sc = 1) {
     if (has(type) && BUG_BOX[type]) {
-      const [bw, bh] = BUG_BOX[type], breathe = 1 + Math.sin(t * 2.4) * 0.018, sway = Math.sin(t * 1.7) * 0.025;
-      g.save(); g.translate(cx, cy + bh * sc / 2 - 6 * sc);
-      g.fillStyle = 'rgba(90,45,5,.25)'; g.beginPath(); g.ellipse(0, -4 * sc, bw * 0.42 * sc, bh * 0.14 * sc, 0, 0, TAU); g.fill();
+      const [bw, bh] = BUG_BOX[type], im = IMG[type], breathe = 1 + Math.sin(t * 2.4) * 0.018, sway = Math.sin(t * 1.7) * 0.025;
+      const k = Math.min(bw / im.naturalWidth, bh / im.naturalHeight) * sc, dw = im.naturalWidth * k, dh = im.naturalHeight * k;
+      const wide = type === 'giant' || type === 'queen', base = cy + (wide ? 30 : 38) * sc; // feet line, centred on cx
+      g.save(); g.translate(cx, base);
+      g.fillStyle = 'rgba(90,45,5,.24)'; g.beginPath(); g.ellipse(0, -5 * sc, dw * 0.4, Math.max(5, dh * 0.09), 0, 0, TAU); g.fill();
       g.rotate(sway); g.scale(breathe, 2 - breathe); g.imageSmoothingQuality = 'high';
-      fitImg(g, IMG[type], 0, 0, bw * sc, bh * sc);
+      g.drawImage(im, -dw / 2, -dh, dw, dh);
       g.restore(); return;
     }
     const p = PAL[type];
