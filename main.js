@@ -41,7 +41,7 @@
     sync(0, true);
     showToast('Shoot the field cannons to collect them!', 2400, '#fff3c4');
   }
-  window.__sand = { get S() { return S; }, slotXY, rowY, laneX, get W() { return W; }, get H() { return H; }, FX, LW, FY, CH, TY, SH, BY, POCKET, POCK, get busy() { return busy; }, toScreen: (x, y) => toScreen(x, y), itemXY: (k) => itemXY(k), resync: () => { vis.clear(); sync(1, true); } };
+  window.__sand = { get S() { return S; }, slotXY, rowY, laneX, get W() { return W; }, get H() { return H; }, FX, LW, FY, CH, TY, SH, BY, POCKET, POCK, get busy() { return busy; }, toScreen: (x, y) => toScreen(x, y), preview: () => previewNow(), get drag() { return drag; }, get mode() { return mode; }, itemXY: (k) => itemXY(k), resync: () => { vis.clear(); sync(1, true); } };
 
   function sync(appearDelay, reconcile) {
     const t = now(), ids = new Set();
@@ -122,8 +122,10 @@
         case 'wallHit': {
           const v = vis.get(e.id);
           if (v) { v.dying = true; v.lunge = now(); setTimeout(() => { puff(ex(v), WC, '#c8a070', 18); vis.delete(e.id); }, 260); }
+          if (e.same) { setTimeout(() => puff(v ? ex(v) : wallMid(e.wall), WC, '#f0d39a', 10), 240); break; } // same move as an earlier hit: no extra damage
           setTimeout(() => { wallAnim[e.wall] = now(); shake = e.fatal ? 20 : 14; sfx.wall(); puff(wallMid(e.wall), WC, '#8a5a2a', 26); puff(wallMid(e.wall), WC, '#f0d39a', 14); }, 240);
-          if (!e.fatal) setTimeout(() => showToast('Barricade smashed! The next hit ends the siege.', 2400, '#ffb0a0'), 300);
+          if (!e.fatal && evs.some((x) => x.type === 'wallHit' && x.same)) setTimeout(() => showToast('Scorpions hit together: counts as ONE hit. The next hit ends the siege.', 2600, '#ffb0a0'), 300);
+          else if (!e.fatal) setTimeout(() => showToast('Barricade smashed! The next hit ends the siege.', 2400, '#ffb0a0'), 300);
           break;
         }
         case 'pickupLost': break;
@@ -153,6 +155,10 @@
     busy = true; mode = null; tapSel = -1;
     pocketShown = S.pocket;
     generalFx(r.events);
+    if (r.free) { // parking in an empty pocket costs no turn
+      sync(0, true); floater(POCK.x, POCK.y - 56, 'Free move', '#c9f5b8', 20, 1.1);
+      await wait(160); busy = false; return;
+    }
     await wait(140);
     const fe = G.fire(S);
     const end = shotsFx(fe);
@@ -185,7 +191,7 @@
       { label: 'Cancel', alt: true },
       { label: 'Use', fn: () => {
         if (k === 'spray') { const r = G.useItem(S, 'spray'); if (r.ok) { sfx.spray(); generalFx(r.events); sync(0, true); saveScores(); } }
-        else { mode = { item: k }; showToast(k === 'fire' ? 'Tap a scorpion to blast it' : 'Tap a cannon below 32', 2200, '#bff7a8'); }
+        else { mode = { item: k }; showToast(k === 'fire' ? 'Tap a scorpion to blast it' : 'Tap a cannon of 32 or less', 2200, '#bff7a8'); }
       } },
     ]);
   }
@@ -226,10 +232,10 @@
   function howTo() {
     dialog('How to Play', `<ol>
       <li>Sand scorpions march down 6 rows toward your two log barricades, one row per turn.</li>
-      <li>You start with a single cannon. <b>Drag</b> a cannon onto an empty square to move it, onto the <b>same number</b> to merge (8 + 8 = 16), or onto a different number to swap. Each drag is one turn. Every merge upgrades the cannon to a new design.</li>
+      <li>You start with a single cannon. <b>Drag</b> a cannon onto an empty square to move it, onto the <b>same number</b> to merge (8 + 8 = 16), or onto a different number to swap. Each of those is one turn, but dropping a cannon into an <b>empty pocket is free</b>. While you hold a cannon over a square, each scorpion shows the damage it would take next volley, or a red target mark if it would die. Every merge upgrades the cannon to a new design.</li>
       <li>After your move, every cannon fires straight up its lane and hits the first thing in it. <b>Overkill carries through</b>: leftover damage keeps going to the next target behind it.</li>
       <li>Shoot the <b>field cannons</b> (blue bubbles) to collect them. A collected cannon drops into your <b>pocket</b> (bottom right). Only one can be collected per turn, and the highest value wins. A new one replaces whatever is in the pocket, so you can also park an unwanted cannon there.</li>
-      <li>A scorpion that reaches a barricade smashes it. You get one free hit; the <b>second hit ends the siege</b>.</li>
+      <li>A scorpion that reaches a barricade smashes it. You get one free hit (several scorpions arriving on the same move count as one hit); the <b>second hit ends the siege</b>.</li>
       <li>Every 25 kills raises the Defense Level: +5% points, bigger field cannons and a free power-up. New scorpions grow with the level <b>and with your firepower</b>, so stronger cannons bring stronger scorpions.</li>
       <li><b>Power-ups are earned</b>: you start with 1 Bug Spray. Slaying a Giant or Brood Queen can drop a charge, and every level-up gives one. Each power-up can be used at most 10 times per game, and using one doesn't cost a turn.</li>
       <li>A slain <b>Brood Queen</b> always leaves eggs: 3 Hatchlings appear where she fell on the next move.</li>
@@ -490,6 +496,42 @@
     shake *= Math.pow(0.02, dt);
   }
 
+  // ---------- damage preview (hover a held cannon over a square) ----------
+  const MARK = { crawler: [-6, 21], hatchling: [-2, 17], giant: [-16, 30], queen: [-22, 32] }; // [y offset to body centre, reticle radius]
+  let pvCache = { key: null, val: null };
+  function previewNow() {
+    if (!drag || !drag.moved || busy || S.over) return null;
+    const to = slotAt(drag.x, drag.y); if (to < 0) return null;
+    const key = `${drag.from}>${to}|${S.turn}|${S.tray.join(',')}|${S.pocket}|${S.enemies.map((e) => e.id + ':' + e.row + ':' + e.hp).join(',')}`;
+    if (pvCache.key !== key) pvCache = { key, val: G.previewMove(S, to === drag.from ? null : { type: 'move', from: drag.from, to }) };
+    return pvCache.val;
+  }
+  function killReticle(g, x, y, r, ts) {
+    const p = 1 + Math.sin(ts * 7) * 0.05; r *= p;
+    g.save(); g.translate(x, y); g.lineCap = 'round';
+    g.fillStyle = 'rgba(255,40,30,.16)'; g.beginPath(); g.arc(0, 0, r, 0, 7); g.fill();
+    const stroke = (w, c) => { g.strokeStyle = c; g.lineWidth = w;
+      g.beginPath(); g.arc(0, 0, r, 0, 7); g.stroke();
+      const k = r * 0.48; g.beginPath(); g.moveTo(-k, -k); g.lineTo(k, k); g.moveTo(k, -k); g.lineTo(-k, k); g.stroke();
+      g.beginPath(); for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { g.moveTo(dx * (r - 5), dy * (r - 5)); g.lineTo(dx * (r + 7), dy * (r + 7)); } g.stroke(); };
+    stroke(7, 'rgba(255,255,255,.9)'); stroke(3.6, '#e8141c');
+    g.restore();
+  }
+  function dmgBadge(g, x, y, dmg, big) {
+    const s = fmt(dmg), fs = big ? 17 : 15; g.save(); g.font = `bold ${fs}px system-ui, sans-serif`;
+    const r = Math.max(big ? 17 : 15, g.measureText(s).width / 2 + 7);
+    g.fillStyle = 'rgba(0,0,0,.35)'; g.beginPath(); g.arc(x, y + 2, r, 0, 7); g.fill();
+    g.fillStyle = rad(g, x - r * 0.3, y - r * 0.4, 1, r * 1.3, [[0, '#c4262c'], [1, '#6a0a0e']]); g.beginPath(); g.arc(x, y, r, 0, 7); g.fill();
+    g.strokeStyle = '#ffe1a0'; g.lineWidth = 2; g.stroke(); g.restore();
+    text(g, s, x, y + 1, fs, '#fff', '#3a0004');
+  }
+  function superLocked(x, y) { // cannons above 32 cannot take the Super Component
+    const g = ctx; g.save(); g.fillStyle = 'rgba(20,12,8,.55)'; rr(g, x - 43, y - 43, 86, 86, 8); g.fill();
+    g.translate(x, y - 6); g.strokeStyle = '#ff5048'; g.lineWidth = 4; g.beginPath(); g.arc(0, 0, 17, 0, 7); g.stroke();
+    g.beginPath(); g.moveTo(-12, -12); g.lineTo(12, 12); g.stroke(); g.restore();
+    text(ctx, 'over 32', x, y - 33, 12, '#ffd0c0', '#000');
+  }
+
   function draw(t) {
     ctx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0);
     if (typeof loading !== 'undefined' && loading) { // preload screen with progress bar
@@ -542,6 +584,13 @@
       }
     }
     for (const [x, y, w, hp, mx, pop, a] of bars) { ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(pop, pop); hpBar(ctx, 0, 0, w, hp, mx); ctx.restore(); }
+    // live damage preview while a cannon is held over a square
+    const pv = previewNow();
+    if (pv) for (const v of list) {
+      const h = pv.hits[v.id]; if (!h || v.type === 'pickup' || v.dying || t < v.appear) continue;
+      const m = MARK[v.type] || MARK.crawler, mx = ex(v), my = rowY(v.dRow) + m[0];
+      if (h.kill) killReticle(ctx, mx, my, m[1], ts); else dmgBadge(ctx, mx, my, h.dmg, v.w === 2);
+    }
 
     // barricades
     G.WALL_SPANS.forEach((span, wi) => {
@@ -560,9 +609,10 @@
       if (drag && drag.from === i && drag.moved) continue;
       let sc = 1; const fx = slotFx[i];
       if (fx) { const k = (t - fx.t) / 300; if (k < 1) sc = fx.kind === 'merge' ? 1 + Math.sin(k * Math.PI) * 0.25 : fx.kind === 'new' ? 0.4 + 0.6 * Math.min(1, k * 1.4) + Math.sin(k * Math.PI) * 0.1 : 1 + Math.sin(k * Math.PI) * 0.08; }
-      if (mode && mode.item === 'super' && v < 32) { ctx.strokeStyle = '#ffe14a'; ctx.lineWidth = 4; rr(ctx, x - 43, y - 43, 86, 86, 8); ctx.stroke(); }
+      if (mode && mode.item === 'super' && v <= G.SUPER_MAX) { ctx.strokeStyle = '#ffe14a'; ctx.lineWidth = 4; rr(ctx, x - 43, y - 43, 86, 86, 8); ctx.stroke(); }
       if (isSel) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 4; rr(ctx, x - 43, y - 43, 86, 86, 8); ctx.stroke(); }
       drawCannon(ctx, x, y - 2, v, sc * 0.95, 1, true, ts);
+      if (mode && mode.item === 'super' && v > G.SUPER_MAX) superLocked(x, y);
     }
     // drop hints while dragging
     if (drag && drag.moved) {

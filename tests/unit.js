@@ -46,7 +46,9 @@ const sc = S.score; G.useItem(S, 'spray');
 assert(!S.enemies.some((e) => e.id === 90) && S.enemies.some((e) => e.id === 91) && S.enemies.some((e) => e.id === 92) && S.score > sc, 'Bug Spray drives off the front scorpions of that section and awards their points');
 
 // items
-S = fresh(); S.tray[0] = 16; S.tray[1] = 32; r = G.useItem(S, 'super', 1); assert(!r.ok, 'Super Component refuses 32');
+S = fresh(); S.tray[0] = 16; S.tray[1] = 32; S.tray[2] = 64; r = G.useItem(S, 'super', 1); assert(r.ok && S.tray[1] === 64, 'Super Component doubles a 32 (32 inclusive)');
+r = G.useItem(S, 'super', 2); assert(!r.ok && S.tray[2] === 64, 'Super Component refuses cannons above 32 (64)');
+{ const S2 = fresh(); S2.pocket = 32; const r2 = G.useItem(S2, 'super', P); assert(r2.ok && S2.pocket === 64, 'Super Component works on a 32 in the pocket'); }
 r = G.useItem(S, 'super', 0); assert(r.ok && S.tray[0] === 32, 'Super Component doubles a cannon below 32');
 S.tray = [8, 8, 0, 0, 0, 4, 0, 0, 0, 0]; S.enemies.push({ id: 93, type: 'crawler', lane: 3, row: 2, w: 1, hp: 100, maxHp: 100 });
 G.useItem(S, 'fire', 93); assert(S.enemies.find((e) => e.id === 93).hp === 90, 'Extra Firepower deals 50% of total cannon attack');
@@ -119,4 +121,43 @@ const e1 = G.TYPES; const ev2 = []; S.dry = -99; S.turn = 50;
 const before2 = S.enemies.length; for (let i = 0; i < 40; i++) G.advance(S);
 const crawlers = S.enemies.filter((e) => e.type === 'crawler');
 assert(crawlers.length && crawlers.every((e) => e.maxHp >= 0.85 * G.POWER_K * G.playerPower(S) - 1), `new crawler HP >= ${G.POWER_K} x cannon power even at level 1 (power ${G.playerPower(S)})`);
+
+// ---- v13 rules ----
+// 1. parking in an EMPTY pocket is free; everything else costs a turn
+S = fresh(); S.tray[0] = 4; S.enemies.push({ id: 900, type: 'crawler', lane: 0, row: 2, w: 1, hp: 50, maxHp: 50 });
+let tr = G.takeTurn(S, { type: 'move', from: 0, to: P });
+assert(tr.ok && tr.free && S.turn === 0 && S.pocket === 4 && S.enemies[0].row === 2 && S.enemies[0].hp === 50, 'tray -> empty pocket is free: no shots, no advance, turn not spent');
+tr = G.takeTurn(S, { type: 'move', from: P, to: 1 });
+assert(tr.ok && !tr.free && S.turn === 1 && S.enemies.find((e) => e.id === 900).row === 3, 'pocket -> field placement costs a turn (scorpions advance)');
+S = fresh(); S.tray[0] = 4; S.tray[1] = 8; tr = G.takeTurn(S, { type: 'move', from: 0, to: 1 }); assert(!tr.free && S.turn === 1, 'swap within the field costs a turn');
+S = fresh(); S.tray[0] = 4; S.tray[1] = 4; tr = G.takeTurn(S, { type: 'move', from: 0, to: 1 }); assert(!tr.free && S.turn === 1, 'merge within the field costs a turn');
+S = fresh(); S.tray[0] = 4; tr = G.takeTurn(S, { type: 'move', from: 0, to: 3 }); assert(!tr.free && S.turn === 1, 'moving to an empty field square costs a turn');
+S = fresh(); S.tray[0] = 4; S.pocket = 8; tr = G.takeTurn(S, { type: 'move', from: 0, to: P }); assert(!tr.free && S.turn === 1 && S.pocket === 4 && S.tray[0] === 8, 'swap with an occupied pocket costs a turn');
+S = fresh(); S.tray[0] = 4; S.pocket = 4; tr = G.takeTurn(S, { type: 'move', from: 0, to: P }); assert(!tr.free && S.turn === 1 && S.pocket === 8, 'merge into an occupied pocket costs a turn');
+assert(G.isFreeMove(fresh(), { from: 0, to: P }) === false, 'isFreeMove false when the source is empty');
+// 2. simultaneous wall arrivals = one hit
+S = fresh(); S.dry = -999; S.enemies.push({ id: 910, type: 'crawler', lane: 0, row: R, w: 1, hp: 9, maxHp: 9 }, { id: 911, type: 'crawler', lane: 4, row: R, w: 1, hp: 9, maxHp: 9 }, { id: 912, type: 'giant', lane: 2, row: R, w: 2, hp: 9, maxHp: 9 });
+ev = G.advance(S);
+assert(!S.over && S.wallHits === 1 && S.walls.filter((w) => !w).length === 1 && ev.filter((e) => e.type === 'wallHit').length === 3 && !ev.some((e) => e.fatal), 'three scorpions hitting the wall on the same move count as ONE hit (one side collapses)');
+S.enemies = [{ id: 913, type: 'crawler', lane: 1, row: R, w: 1, hp: 9, maxHp: 9 }]; ev = G.advance(S);
+assert(S.over && ev.some((e) => e.type === 'wallHit' && e.fatal), 'a second, separate hit afterwards ends the game');
+S = fresh(); S.enemies.push({ id: 920, type: 'crawler', lane: 0, row: R, w: 1, hp: 9, maxHp: 9 }, { id: 921, type: 'crawler', lane: 1, row: R, w: 1, hp: 9, maxHp: 9 }); S.walls[1] = false; S.wallHits = 1;
+G.advance(S); assert(S.over, 'with one hit already taken, simultaneous arrivals end the game');
+// 3. damage preview (pure)
+S = fresh(); S.tray[2] = 16; S.tray[0] = 8; S.pocket = 8;
+S.enemies.push({ id: 930, type: 'crawler', lane: 2, row: 4, w: 1, hp: 5, maxHp: 5 }, { id: 931, type: 'crawler', lane: 2, row: 2, w: 1, hp: 6, maxHp: 6 }, { id: 932, type: 'crawler', lane: 2, row: 0, w: 1, hp: 50, maxHp: 50 }, { id: 933, type: 'giant', lane: 0, row: 3, w: 2, hp: 20, maxHp: 20 });
+const snap = JSON.stringify(S);
+let pv = G.previewMove(S, { type: 'move', from: P, to: 1 });
+assert(JSON.stringify(S) === snap, 'previewMove does not mutate the game state');
+assert(pv.hits[930].kill && pv.hits[931].kill && pv.hits[932].dmg === 5 && !pv.hits[932].kill, 'preview includes overkill carry-through (kill, kill, 5 dmg behind)');
+assert(pv.hits[933].dmg === 16 && !pv.hits[933].kill, 'preview: held 8 in lane 1 + 8 in lane 0 both hit the 2-wide giant (16 of 20)');
+{ const M = JSON.parse(snap); M.pocket = 16; const q = G.previewMove(M, { type: 'move', from: P, to: 2 });
+  assert(q.hits[930].kill && q.hits[931].kill && q.hits[932].dmg === 21, 'preview accounts for a merge (16+16 -> 32 in lane 2: 5 + 6 + 21 carry)'); }
+S.tray[5] = 4; pv = G.previewMove(S, { type: 'move', from: P, to: 6 });
+assert(pv.hits[933].kill && pv.hits[933].dmg === 20, '2-wide targets are hit from both lanes (8 + 4 + 8 >= 20 kills; dmg capped at HP)');
+pv = G.previewMove(S, { type: 'move', from: 2, to: 3 });
+assert(!pv.hits[930] && !pv.hits[931] && pv.hits[932] === undefined, 'preview accounts for the cannon leaving its old lane');
+pv = G.previewMove(S, { type: 'move', from: 0, to: P }); assert(pv === null || pv.hits, 'preview of an occupied-pocket swap works');
+S.pocket = 0; pv = G.previewMove(S, { type: 'move', from: 0, to: P }); assert(pv.free && !Object.keys(pv.hits).length, 'preview of a free pocket park shows nothing (no volley)');
+
 console.log('all unit checks passed');

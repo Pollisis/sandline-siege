@@ -28,14 +28,23 @@ async function pickMove(page) {
     const f = t.findIndex((v) => v); const e = t.findIndex((v, i) => !v && i !== f); return { from: f, to: e >= 0 ? e : P };
   });
 }
+async function hold(page, from, to) { // press on a slot and hover over another without releasing
+  const a = await pt(page, from), b = await pt(page, to);
+  await page.mouse.move(a.x, a.y); await page.mouse.down();
+  for (let k = 1; k <= 8; k++) await page.mouse.move(a.x + (b.x - a.x) * k / 8, a.y + (b.y - a.y) * k / 8);
+  await page.waitForTimeout(80);
+}
+async function hoverTo(page, to) { const b = await pt(page, to); await page.mouse.move(b.x, b.y, { steps: 4 }); await page.waitForTimeout(80); }
 async function play(page, n, tag) {
   let collects = 0, turns = 0;
-  for (let i = 0; i < n; i++) {
+  for (let i = 0, guard = 0; i < n && guard < n * 4; i++, guard++) {
     const s0 = await st(page); if (s0.over) break;
     const m = await pickMove(page);
     await drag(page, m.from, m.to);
     const s1 = await st(page);
-    if (s1.turn !== s0.turn + 1) throw new Error(`${tag}: turn did not advance for move ${JSON.stringify(m)}`);
+    const free = m.to === 10 && !s0.pocket && m.from !== 10;
+    if (s1.turn !== s0.turn + (free ? 0 : 1)) throw new Error(`${tag}: turn count wrong for move ${JSON.stringify(m)} (free=${free})`);
+    if (free) { i--; continue; } // parking in an empty pocket is free; keep going until a real turn is played
     if (s1.pocket && s1.pocket !== s0.pocket && m.from !== 10) collects++;
     turns++;
   }
@@ -83,8 +92,14 @@ async function useItem(page, k) {
   // park a cannon in the pocket (pocket empty or swap)
   await calm(page);
   await page.evaluate(() => { window.__sand.S.pocket = 0; window.__sand.S.tray[7] = 8; });
+  await page.evaluate(() => { const S = window.__sand.S; S.enemies.push({ id: 7050, type: 'crawler', lane: 1, row: 2, w: 1, hp: 999, maxHp: 999 }); window.__sand.resync(); });
+  const tPark = (await st(page)).turn;
   await drag(page, 7, 10); s = await st(page);
   check(s.pocket === 8 && !s.tray[7], 'drag a tray cannon into the pocket');
+  check(s.turn === tPark && s.enemies.find((e) => e.id === 7050).row === 2 && s.enemies.find((e) => e.id === 7050).hp === 999, 'dropping into an EMPTY pocket is free (no turn, no volley, scorpions stay put)');
+  const tPlace = s.turn; await page.evaluate(() => { window.__sand.S.tray[3] = 0; }); await drag(page, 10, 3); s = await st(page);
+  check(s.turn === tPlace + 1 && s.tray[3] === 8, 'placing a cannon from the pocket onto the field costs a turn');
+  await calm(page); await page.evaluate(() => { const S = window.__sand.S; S.tray[3] = 0; S.pocket = 8; S.tray[7] = 0; });
   await calm(page); await page.evaluate(() => { window.__sand.S.tray[8] = 8; }); await drag(page, 10, 8); s = await st(page);
   check(s.tray[8] === 16 && !s.pocket, 'pocket cannon merges onto an equal tray cannon');
 
@@ -95,6 +110,39 @@ async function useItem(page, k) {
   await page.evaluate(() => { const S = window.__sand.S; S.tray[9] = 4; S.items = { spray: 1, fire: 1, super: 1 }; S.itemUsed = { spray: 0, fire: 0, super: 0 }; });
   const t1 = await useItem(page, 'super'); const p9 = await pt(page, 9); await page.mouse.click(p9.x, p9.y); await page.waitForTimeout(150);
   s = await st(page); check(t1 === 'Super Component' && s.tray[9] === 8 && s.items.super === 0 && s.itemUsed.super === 1, 'Super Component doubles a cannon (charge spent, 1/10 used)');
+  // Super Component: 32 inclusive, above 32 refused and marked
+  await page.evaluate(() => { const S = window.__sand.S; S.tray[9] = 32; S.tray[8] = 64; S.items.super = 2; });
+  await useItem(page, 'super'); await page.waitForTimeout(150);
+  await page.screenshot({ path: `${out}/06b-mobile-super-targets.png` });
+  const p8 = await pt(page, 8); await page.mouse.click(p8.x, p8.y); await page.waitForTimeout(150); s = await st(page);
+  check(s.tray[8] === 64 && s.items.super === 2, 'Super Component refuses a 64 (above 32) and keeps the charge');
+  check(await page.evaluate(() => !!(window.__sand.mode && window.__sand.mode.item === 'super')), 'refused tap keeps Super Component targeting active'); const p9b = await pt(page, 9); await page.mouse.click(p9b.x, p9b.y); await page.waitForTimeout(150); s = await st(page);
+  check(s.tray[9] === 64 && s.items.super === 1, 'Super Component doubles a 32 (32 inclusive)');
+  // live damage preview while holding a cannon
+  await calm(page);
+  await page.evaluate(() => { const S = window.__sand.S; S.tray = [8, 0, 0, 0, 0, 0, 0, 0, 0, 16]; S.pocket = 0;
+    S.enemies.push({ id: 7600, type: 'crawler', lane: 1, row: 4, w: 1, hp: 5, maxHp: 20 }, { id: 7601, type: 'crawler', lane: 1, row: 2, w: 1, hp: 6, maxHp: 20 }, { id: 7602, type: 'crawler', lane: 1, row: 0, w: 1, hp: 50, maxHp: 50 },
+      { id: 7603, type: 'giant', lane: 3, row: 3, w: 2, hp: 40, maxHp: 60 }); window.__sand.resync(); });
+  await hold(page, 9, 1);
+  let pv = await page.evaluate(() => window.__sand.preview());
+  check(pv && pv.hits[7600].kill && pv.hits[7601].kill && pv.hits[7602].dmg === 5 && !pv.hits[7602].kill, 'hover preview over lane 2: kill marks on two scorpions, 5 carried to the third (overkill)');
+  await page.screenshot({ path: `${out}/06c-mobile-preview-kill.png` });
+  await hoverTo(page, 3);
+  pv = await page.evaluate(() => window.__sand.preview());
+  check(pv && pv.hits[7603] && pv.hits[7603].dmg === 16 && !pv.hits[7603].kill && !pv.hits[7600], 'moving the held cannon to another square updates the preview live (16 on the 40-HP giant)');
+  await page.screenshot({ path: `${out}/06d-mobile-preview-number.png` });
+  await hoverTo(page, 4); pv = await page.evaluate(() => window.__sand.preview());
+  check(pv && pv.hits[7603].dmg === 16, 'giant spans 2 lanes: hit from either lane');
+  await hoverTo(page, 9); await page.mouse.up(); await page.waitForTimeout(100); await idle(page);
+  s = await st(page); check(!(await page.evaluate(() => window.__sand.preview())) && s.tray[9] === 16, 'releasing on the start square makes no move and clears the preview');
+  // simultaneous wall hits count as one
+  await calm(page);
+  await page.evaluate(() => { const S = window.__sand.S, R = window.SandGame.ROWS - 1; S.tray = [0, 0, 0, 0, 0, 1, 0, 0, 0, 0];
+    S.enemies.push({ id: 7700, type: 'crawler', lane: 0, row: R, w: 1, hp: 99999, maxHp: 99999 }, { id: 7701, type: 'crawler', lane: 4, row: R, w: 1, hp: 99999, maxHp: 99999 }, { id: 7702, type: 'crawler', lane: 2, row: R, w: 1, hp: 99999, maxHp: 99999 }); window.__sand.resync(); });
+  await drag(page, 5, 6); await page.waitForTimeout(500); s = await st(page);
+  check(!s.over && s.wallHits === 1 && s.walls.filter((w) => !w).length === 1, 'three scorpions reaching the wall on the same move = one hit (one side collapses, game continues)');
+  await page.screenshot({ path: `${out}/06e-mobile-simultaneous-wall.png` });
+  await page.evaluate(() => { const S = window.__sand.S; S.walls = [true, true]; S.wallHits = 0; window.__sand.resync(); });
   // Extra Firepower
   await page.evaluate(() => { const S = window.__sand.S; S.enemies.push({ id: 7001, type: 'crawler', lane: 2, row: 2, w: 1, hp: 999, maxHp: 999 }); window.__sand.resync(); });
   await useItem(page, 'fire'); await clickLogical(page, (await page.evaluate(() => window.__sand.laneX(2))), await page.evaluate(() => window.__sand.rowY(2)));
@@ -187,9 +235,20 @@ async function useItem(page, k) {
   ip.on('pageerror', (e) => errors.push('ipad pageerror: ' + e.message));
   await ip.goto(url); await ip.waitForFunction(() => window.__sand && window.__sand.ready, null, { timeout: 30000 }); await ip.waitForTimeout(300); await ip.click('#ov-buttons .btn');
   const m = await pickMove(ip), a = await pt(ip, m.from), b = await pt(ip, m.to);
-  const t0 = (await st(ip)).turn;
+  const s0ip = await st(ip), t0 = s0ip.turn;
   await ip.touchscreen.tap(a.x, a.y); await ip.waitForTimeout(100); await ip.touchscreen.tap(b.x, b.y); await ip.waitForTimeout(100); await idle(ip);
-  check((await st(ip)).turn === t0 + 1, 'iPad touch tap-to-select then tap-to-place makes a move');
+  const freeTap = m.to === 10 && m.from !== 10 && !s0ip.pocket;
+  check((await st(ip)).turn === t0 + (freeTap ? 0 : 1), 'iPad touch tap-to-select then tap-to-place makes a move');
+  // touch drag (pointerType touch) shows the live preview
+  await ip.evaluate(() => { const S = window.__sand.S; S.enemies = [{ id: 7800, type: 'crawler', lane: 0, row: 3, w: 1, hp: 3, maxHp: 9 }]; S.tray = [0, 0, 0, 0, 0, 0, 0, 0, 0, 4]; S.pocket = 0; S.dry = -99; window.__sand.resync(); });
+  const tp = await ip.evaluate(() => {
+    const cv = document.getElementById('game'), a = window.__sand.slotXY(9), b = window.__sand.slotXY(5);
+    const A = window.__sand.toScreen(a.x, a.y), B = window.__sand.toScreen(b.x, b.y);
+    const fire = (type, p) => cv.dispatchEvent(new PointerEvent(type, { pointerId: 7, pointerType: 'touch', isPrimary: true, clientX: p.x, clientY: p.y, bubbles: true, cancelable: true }));
+    fire('pointerdown', A); for (let k = 1; k <= 6; k++) fire('pointermove', { x: A.x + (B.x - A.x) * k / 6, y: A.y + (B.y - A.y) * k / 6 });
+    const pv = window.__sand.preview(); fire('pointerup', B); return pv;
+  });
+  check(tp && tp.hits[7800] && tp.hits[7800].kill, 'touch drag on a tablet shows the kill reticle preview');
   await play(ip, 8, 'ipad');
   await ip.screenshot({ path: `${out}/08-ipad.png` });
   await browser.close();

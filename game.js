@@ -22,7 +22,7 @@
   const ITEM_INFO = {
     spray: { name: 'Bug Spray', desc: 'Repairs a destroyed barricade and drives off the scorpions closest to it, earning their points.' },
     fire:  { name: 'Extra Firepower', desc: 'Tap a scorpion: it takes damage equal to 50% of the total attack of all your cannons.' },
-    super: { name: 'Super Component', desc: 'Tap a cannon with attack below 32 to double it.' },
+    super: { name: 'Super Component', desc: 'Tap a cannon with attack 32 or less to double it.' },
   };
 
   // Serializable RNG (state lives in S.rs so a state can be cloned with JSON).
@@ -41,6 +41,7 @@
   const EARN_CHANCE_BIG = 0.4, START_ITEMS = { spray: 1, fire: 0, super: 0 };
   // Scorpion HP keeps up with the player's cannons: max(level curve, POWER_K * cannon power) +/- HP_JITTER
   const POWER_K = 0.4, HP_JITTER = 0.15;
+  const SUPER_MAX = 32; // Super Component doubles cannons of value <= 32
   const playerPower = (S) => totalAttack(S) + S.pocket;
   const PICKUP_CHANCE = 0.4, PICKUP_DRY_TURNS = 3, PICKUP_BONUS_CHANCE = 0.3;
   const totalAttack = (S) => S.tray.reduce((a, b) => a + b, 0);
@@ -185,11 +186,14 @@
     const ok = (i) => Number.isInteger(i) && i >= 0 && i <= POCKET;
     if (!ok(from) || !ok(to) || from === to || !getSlot(S, from)) return { ok: false, msg: 'Invalid move' };
     const vf = getSlot(S, from), vt = getSlot(S, to);
+    // Parking a cannon in an EMPTY pocket is free: no shots, scorpions don't advance.
+    if (to === POCKET && !vt) { setSlot(S, to, vf); setSlot(S, from, 0); ev.push({ type: 'moveT', from, to, value: vf, free: true }); return { ok: true, free: true, events: ev }; }
     if (!vt) { setSlot(S, to, vf); setSlot(S, from, 0); ev.push({ type: 'moveT', from, to, value: vf }); }
     else if (vt === vf) { setSlot(S, to, vf * 2); setSlot(S, from, 0); ev.push({ type: 'merge', from, to, value: vf * 2 }); }
     else { setSlot(S, to, vf); setSlot(S, from, vt); ev.push({ type: 'swap', from, to }); }
-    return { ok: true, events: ev };
+    return { ok: true, free: false, events: ev };
   }
+  const isFreeMove = (S, a) => a && a.to === POCKET && a.from !== POCKET && !S.pocket && !!getSlot(S, a.from);
 
   // ---- Turn step 1: every tray cannon fires up its lane ----
   // Overkill carries through: surplus damage continues to the next thing behind in the same lane.
@@ -231,11 +235,13 @@
     const ev = [];
     if (S.over) return ev;
     const sorted = S.enemies.slice().sort((a, b) => b.row - a.row);
+    let hitThisMove = -1; // scorpions reaching the wall on the same move count as ONE hit
     for (const e of sorted) {
       if (e.row !== ROWS - 1) continue;
       S.enemies.splice(S.enemies.indexOf(e), 1);
       if (!isBug(e)) { ev.push({ type: 'pickupLost', id: e.id }); continue; }
       const touched = [...new Set(lanesOf(e).flatMap(laneWalls))];
+      if (hitThisMove >= 0) { ev.push({ type: 'wallHit', id: e.id, wall: hitThisMove, fatal: false, same: true }); continue; }
       if (S.wallHits >= 1) {
         S.wallHits++; S.over = true;
         ev.push({ type: 'wallHit', id: e.id, wall: touched.find((w) => S.walls[w]) ?? touched[0], fatal: true });
@@ -243,7 +249,7 @@
       }
       const intact = touched.filter((w) => S.walls[w]);
       const wi = intact.length ? intact[(rand(S) * intact.length) | 0] : touched[0];
-      S.walls[wi] = false; S.wallHits = 1;
+      S.walls[wi] = false; S.wallHits = 1; hitThisMove = wi;
       ev.push({ type: 'wallHit', id: e.id, wall: wi, fatal: false });
     }
     if (S.over) { ev.push({ type: 'gameOver' }); S.turn++; return ev; }
@@ -326,7 +332,8 @@
       checkLevel(S, ev);
     } else if (item === 'super') {
       const v = getSlot(S, arg);
-      if (!v || v >= 32) return { ok: false, msg: 'Tap a cannon below 32' };
+      if (!v) return { ok: false, msg: 'Tap a cannon of 32 or less' };
+      if (v > SUPER_MAX) return { ok: false, msg: 'Super Component only works on cannons of 32 or less' };
       setSlot(S, arg, v * 2); ev.push({ type: 'super', slot: arg, value: v * 2 });
     } else return { ok: false, msg: 'Unknown item' };
     S.items[item]--; S.itemUsed[item]++;
@@ -336,7 +343,23 @@
   function takeTurn(S, action) {
     const r = playerMove(S, action);
     if (!r.ok) return r;
+    if (r.free) return { ok: true, free: true, events: r.events };
     return { ok: true, events: r.events.concat(fire(S), advance(S)) };
+  }
+
+  // Damage preview for a pending move: what the NEXT volley would do to each target (incl. overkill carry-through).
+  // Returns { free, hits: { [enemyId]: { dmg, kill } } }. Pure: works on a clone, S is untouched.
+  function previewMove(S, a) {
+    const C = clone(S); let free = false;
+    if (a && a.from !== a.to) { const r = playerMove(C, a); if (!r.ok) return null; free = !!r.free; }
+    const hits = {};
+    if (free) return { free, hits };
+    for (const e of fire(C)) if (e.type === 'shot') for (const h of e.hits) {
+      if (h.pickup) continue;
+      const o = hits[h.targetId] || (hits[h.targetId] = { dmg: 0, kill: false });
+      o.dmg += h.dmg; if (h.killed) o.kill = true;
+    }
+    return { free, hits };
   }
 
   function legalMoves(S) {
@@ -349,6 +372,6 @@
   }
 
   return { LANES, ROWS, SLOTS, POCKET, KILLS_PER_LEVEL, ITEM_USES, WALLS, WALL_SPANS, laneWalls, TYPES, ITEMS, ITEM_INFO, playerPower, POWER_K,
-    newGame, playerMove, fire, advance, useItem, takeTurn, legalMoves, targetInLane, totalAttack, bonusPct,
+    newGame, playerMove, fire, advance, useItem, takeTurn, legalMoves, previewMove, isFreeMove, SUPER_MAX, targetInLane, totalAttack, bonusPct,
     baseHp, pickupExp, lanesOf, isBug, clone, getSlot, rand };
 });
