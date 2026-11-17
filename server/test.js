@@ -1,0 +1,20 @@
+// node test.js  (pure rule tests, no database needed)
+const R = require('./rules');
+const ok = (c, m) => { if (!c) { console.error('FAIL: ' + m); process.exit(1); } console.log('ok - ' + m); };
+const S = 'test-secret';
+ok(R.cleanName('Jess').ok && R.cleanName('  Stephen  G ').name === 'Stephen G', 'normal names pass and are trimmed');
+ok(!R.cleanName('').ok && !R.cleanName('x'.repeat(17)).ok && R.cleanName('x'.repeat(16)).ok, 'name length 1-16');
+ok(!R.cleanName('<script>').ok, 'odd characters rejected');
+for (const bad of ['fuck', 'FuCk3r', 'sh1t', 'b!tch', 'a$$hole', 'Big Dick', 'sex', 'n1gga']) ok(!R.cleanName(bad).ok, `profanity blocked: ${bad}`);
+for (const fine of ['Michelle', 'Cassandra', 'Dickens', 'Hello', 'Sussex Sam', 'Jessica', 'Peacock']) ok(R.cleanName(fine).ok, `innocent name allowed: ${fine}`);
+const now = Date.now(), run = R.newRun(S, now - 600_000);
+const sub = (o) => Object.assign({ name: 'Jess', score: 5000, level: 2, kills: 30, turns: 80 }, run, o);
+ok(R.checkSubmission(sub({}), S, now).ok, 'plausible run accepted');
+ok(!R.checkSubmission(sub({ sig: 'x'.repeat(32) }), S, now).ok, 'forged token rejected');
+ok(!R.checkSubmission(sub({ level: 5 }), S, now).ok, 'level must match kills (1 + floor(kills/25))');
+ok(!R.checkSubmission(sub({ score: 999999 }), S, now).ok, 'score far above the maximum for the kills is rejected');
+ok(!R.checkSubmission(sub({ score: 0 }), S, now).ok && !R.checkSubmission(sub({ score: 1.5 }), S, now).ok, 'score must be a positive integer');
+ok(!R.checkSubmission(sub({ kills: 3000, level: 121, score: 100 }), S, now).ok, 'kills far above turns rejected');
+const fast = R.newRun(S, now - 2000); ok(!R.checkSubmission(Object.assign(sub({}), fast, { turns: 200, kills: 30 }), S, now).ok, 'run finished impossibly fast rejected');
+const old = R.newRun(S, now - 8 * 24 * 3600_000); ok(!R.checkSubmission(Object.assign(sub({}), old), S, now).ok, 'expired token rejected');
+console.log('all leaderboard rule tests passed');

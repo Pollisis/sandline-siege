@@ -1,0 +1,19 @@
+{
+  "name": "sandline-leaderboard",
+  "version": "1.0.0",
+  "description": "Tiny global leaderboard API for Sandline Siege",
+  "main": "server.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test.js"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@neondatabase/serverless": "^1.2.1",
+    "ws": "^8.23.0"
+  }
+}
