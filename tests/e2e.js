@@ -259,7 +259,7 @@ async function useItem(page, k) {
   check(true, 'server down: Leaderboard shows "Leaderboard unavailable"');
   await dn.screenshot({ path: `${out}/14-leaderboard-unavailable.png` });
   await dn.click('#ov-buttons .btn'); await dn.waitForTimeout(200);
-  await dn.evaluate(() => { const S = window.__sand.S, R = window.SandGame.ROWS - 1; S.wallHits = 1; S.walls = [false, true]; S.enemies.push({ id: 7400, type: 'crawler', lane: 2, row: R, w: 1, hp: 99999, maxHp: 99999 }); window.__sand.resync(); });
+  await dn.evaluate(() => { const S = window.__sand.S, R = window.SandGame.ROWS - 1; S.score = Math.max(S.score, 300); S.wallHits = 1; S.walls = [false, true]; S.enemies.push({ id: 7400, type: 'crawler', lane: 2, row: R, w: 1, hp: 99999, maxHp: 99999 }); window.__sand.resync(); });
   await play(dn, 3, 'down-over'); await dn.waitForTimeout(1400);
   if ((await dn.textContent('#ov-title')) === 'The Barricades Have Fallen' && (await dn.textContent('#ov-buttons .btn')) === 'Submit Score') {
     await dn.click('#ov-buttons .btn'); await dn.waitForTimeout(150); await dn.fill('#hs-name', 'Offline Olly'); await dn.click('#ov-buttons .btn');
