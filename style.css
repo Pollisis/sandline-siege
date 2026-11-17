@@ -61,3 +61,14 @@ table.scores tr.me td { background: rgba(242,194,64,.22); }
 table.scores .r { text-align: right; }
 .name-input { display: block; width: 100%; box-sizing: border-box; font: inherit; font-size: 24px; text-align: center; padding: 10px; border-radius: 12px;
   border: 2px solid #c9962e; background: #12141a; color: #fff; user-select: text; -webkit-user-select: text; }
+/* leaderboard */
+.lb-tabs { display: flex; gap: 8px; justify-content: center; margin: 0 0 10px; }
+.lb-tabs button { font: inherit; font-weight: bold; font-size: 16px; padding: 7px 16px; border-radius: 999px; cursor: pointer; color: #f6e7c4;
+  background: linear-gradient(#5a3b20, #3a2412); border: 2px solid rgba(201,150,46,.55); }
+.lb-tabs button.on { color: #3a2208; background: linear-gradient(#ffe48a, #e0a83a); border-color: #fff0b8; }
+.lb-note { text-align: center; margin: 2px 0 8px; color: #ffe08a; }
+.lb-msg { text-align: center; padding: 22px 8px; line-height: 1.5; }
+.lb-err { min-height: 1.2em; color: #ff9a8a; text-align: center; margin: 8px 0 0; font-weight: bold; }
+.spinner { width: 34px; height: 34px; margin: 0 auto 10px; border-radius: 50%; border: 4px solid rgba(242,194,64,.25); border-top-color: #f2c240; animation: lbspin .9s linear infinite; }
+.spinner.sm { display: inline-block; width: 14px; height: 14px; margin: 0 6px -2px 0; border-width: 3px; }
+@keyframes lbspin { to { transform: rotate(360deg); } }

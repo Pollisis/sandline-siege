@@ -18,8 +18,8 @@
   const fmt = (n) => (n >= 1e6 ? (n / 1e6).toFixed(n >= 1e7 ? 1 : 2) + 'M' : n >= 1e4 ? (n / 1e3).toFixed(n >= 1e5 ? 0 : 1) + 'K' : String(Math.round(n)));
 
   // ================= RASTER SPRITES (assets/*.webp) with procedural fallback =================
-  const ASSET_V = 13;
-  const ASSETS = [...Array.from({ length: 12 }, (_, i) => 'cannon' + String(i + 1).padStart(2, '0')),
+  const ASSET_V = 14;
+  const ASSETS = [...Array.from({ length: 17 }, (_, i) => 'cannon' + String(i + 1).padStart(2, '0')),
     'crawler', 'giant', 'queen', 'hatchling', 'eggs', 'orb', 'item_spray', 'item_fire', 'item_super', 'barricade', 'barricade_broken', 'bg', 'tile'];
   const IMG = {};
   const has = (k) => !!(IMG[k] && IMG[k].naturalWidth);
@@ -56,6 +56,11 @@
     { name: 'Glass Crystal',   main: '#7fe0ff', dark: '#2a7fa8', light: '#f0fdff', glow: '#9ff0ff', gem: '#ffffff' },
     { name: 'Royal Gold',      main: '#f0c03a', dark: '#94640c', light: '#fff4b8', glow: '#ffe066', gem: '#e8203a' },
     { name: 'Sunburst',        main: '#fff4dc', dark: '#c49a40', light: '#ffffff', glow: '#fff09a', gem: '#4ac8ff' },
+    { name: 'Obsidian Ember',  main: '#2a2026', dark: '#0e0a0c', light: '#ff9a3a', glow: '#ff6a1a', gem: '#ff4a10' },
+    { name: 'Jade Dragon',     main: '#2fae5a', dark: '#0e5a2a', light: '#b8f5c8', glow: '#7affa0', gem: '#fff8ee' },
+    { name: 'Storm Titan',     main: '#2848b8', dark: '#0c1a5a', light: '#9ad8ff', glow: '#4ae0ff', gem: '#3a9aff' },
+    { name: 'Celestial Rose',  main: '#f0609a', dark: '#8a2450', light: '#ffd0e4', glow: '#ff8ac0', gem: '#ff3a9a' },
+    { name: 'Rainbow Sovereign', main: '#d8c8ff', dark: '#8a5ac8', light: '#ffffff', glow: '#fff0ff', gem: '#ff5ad0', rainbow: true },
   ];
   const tierIdx = (v) => Math.max(0, Math.min(TIERS.length - 1, Math.round(Math.log2(Math.max(1, v)))));
   const tierOf = (v) => TIERS[tierIdx(v)];
@@ -230,8 +235,10 @@
     g.save(); g.globalAlpha = alpha;
     if (idx >= 10) { // live pulsing aura for the top tiers
       const p = 0.5 + 0.5 * Math.sin(t * 3);
-      g.fillStyle = rad(g, x, y - 12 * sc, 4, (58 + p * 10) * sc, [[0, TIERS[idx].glow + '66'], [1, TIERS[idx].glow + '00']]);
-      g.beginPath(); g.arc(x, y - 12 * sc, (58 + p * 10) * sc, 0, TAU); g.fill();
+      const T = TIERS[idx], hue = (t * 70) % 360; // Rainbow Sovereign's aura cycles through every colour
+      const c0 = T.rainbow ? `hsla(${hue},100%,72%,.5)` : T.glow + '66', c1 = T.rainbow ? `hsla(${(hue + 120) % 360},100%,72%,0)` : T.glow + '00';
+      g.fillStyle = rad(g, x, y - 12 * sc, 4, (58 + p * 10 + (idx >= 12 ? 6 : 0)) * sc, [[0, c0], [1, c1]]);
+      g.beginPath(); g.arc(x, y - 12 * sc, (58 + p * 10 + (idx >= 12 ? 6 : 0)) * sc, 0, TAU); g.fill();
     }
     if (raster) {
       g.fillStyle = 'rgba(70,35,5,.28)'; g.beginPath(); g.ellipse(x, y + 24 * sc, 34 * sc, 8 * sc, 0, 0, TAU); g.fill();

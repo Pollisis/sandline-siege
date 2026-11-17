@@ -37,7 +37,8 @@
   const HP_BASE = 2, HP_GROWTH = 1.45;
   const baseHp = (level) => Math.max(2, Math.round(HP_BASE * Math.pow(HP_GROWTH, level - 1)));
   const bonusPct = (level) => 5 * (level - 1);
-  const pickupExp = (level) => Math.min(10, Math.floor((level - 1) / 2.4));
+  // Unchanged through level 16, then drops grow faster so 4096..65536 tiers are reachable in strong runs.
+  const pickupExp = (level) => Math.min(15, level <= 16 ? Math.floor((level - 1) / 2.4) : 6 + Math.floor((level - 16) / 1.2));
   const EARN_CHANCE_BIG = 0.4, START_ITEMS = { spray: 1, fire: 0, super: 0 };
   // Scorpion HP keeps up with the player's cannons: max(level curve, POWER_K * cannon power) +/- HP_JITTER
   const POWER_K = 0.4, HP_JITTER = 0.15;

@@ -160,4 +160,13 @@ assert(!pv.hits[930] && !pv.hits[931] && pv.hits[932] === undefined, 'preview ac
 pv = G.previewMove(S, { type: 'move', from: 0, to: P }); assert(pv === null || pv.hits, 'preview of an occupied-pocket swap works');
 S.pocket = 0; pv = G.previewMove(S, { type: 'move', from: 0, to: P }); assert(pv.free && !Object.keys(pv.hits).length, 'preview of a free pocket park shows nothing (no volley)');
 
+// tiers past 2048: drop curve unchanged through level 16, grows after, capped at 2^15
+const PE = G.pickupExp;
+assert([1, 5, 10, 16].every((l) => PE(l) === Math.min(10, Math.floor((l - 1) / 2.4))), 'pickup values unchanged through level 16');
+assert(PE(20) === 9 && PE(25) === 13 && PE(40) === 15 && PE(99) === 15, 'pickups grow past level 16 (lv20 512, lv25 8192) and cap at 32768');
+let ok = true; for (let l = 1; l < 60; l++) if (PE(l + 1) < PE(l)) ok = false; assert(ok, 'pickup curve never decreases');
+S = fresh(); noSpawn(S); S.tray[0] = 32768; S.tray[1] = 32768;
+G.playerMove(S, { type: 'move', from: 1, to: 0 });
+assert(S.tray[0] === 65536 && !S.tray[1], 'two 32768 cannons merge into a 65536 cannon');
+
 console.log('all unit checks passed');

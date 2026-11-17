@@ -40,6 +40,7 @@
     toast = null; busy = false; mode = null; drag = null; tapSel = -1; shake = 0; overShown = false; pocketShown = 0; wallAnim = [0, 0];
     sync(0, true);
     showToast('Shoot the field cannons to collect them!', 2400, '#fff3c4');
+    lbStartRun();
   }
   window.__sand = { get S() { return S; }, slotXY, rowY, laneX, get W() { return W; }, get H() { return H; }, FX, LW, FY, CH, TY, SH, BY, POCKET, POCK, get busy() { return busy; }, toScreen: (x, y) => toScreen(x, y), preview: () => previewNow(), get drag() { return drag; }, get mode() { return mode; }, itemXY: (k) => itemXY(k), resync: () => { vis.clear(); sync(1, true); } };
 
@@ -278,42 +279,100 @@
     mu.onchange = () => { audio(); A.set('mute', mu.checked); };
   }
 
-  // ---------- high scores (top 10, this device) ----------
+  // ---------- leaderboard: global (server) + top 10 on this device (fallback) ----------
+  const LB_URL = (() => { try { const q = new URLSearchParams(location.search).get('lb'); if (q && /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(q)) return q; } catch (e) {} return 'https://sandline-leaderboard.onrender.com'; })();
+  const lb = { state: 'waking', run: null, cache: null };
+  function lbFetch(path, opts, ms) {
+    const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const tm = setTimeout(() => ctl && ctl.abort(), ms || 15000);
+    return fetch(LB_URL + path, Object.assign({ signal: ctl && ctl.signal, headers: { 'Content-Type': 'application/json' } }, opts || {}))
+      .then((r) => r.json().catch(() => ({})).then((j) => { if (!r.ok) { const e = new Error(j.error || 'HTTP ' + r.status); e.status = r.status; throw e; } return j; }))
+      .finally(() => clearTimeout(tm));
+  }
+  // Free server sleeps when idle: ping on load to wake it (can take ~a minute).
+  function lbPing() { lb.state = 'waking'; return lbFetch('/health', null, 75000).then(() => { lb.state = 'up'; }, () => { lb.state = 'down'; }); }
+  function lbStartRun() {
+    const mine = {}; lb.run = mine;
+    const go = (n) => lbFetch('/runs', { method: 'POST', body: '{}' }, 75000).then((tok) => { if (lb.run === mine) { Object.assign(mine, tok); lb.state = 'up'; } },
+      () => { if (lb.run === mine && n > 0) setTimeout(() => go(n - 1), 20000); });
+    go(3);
+  }
+  const myIds = () => LS.get('myIds', []);
   const getScores = () => LS.get('scores', []);
-  const qualifies = (sc) => sc > 0 && (getScores().length < 10 || sc > getScores()[getScores().length - 1].score);
   const esc = (x) => String(x).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   function addScore(name, score, level) {
-    const list = getScores(), entry = { name: name.slice(0, 12) || 'Defender', score, level, date: new Date().toISOString().slice(0, 10), id: Date.now() };
-    list.push(entry); list.sort((a, b) => b.score - a.score); const top = list.slice(0, 10); LS.set('scores', top); return entry.id;
+    const list = getScores(), entry = { name: name.slice(0, 16) || 'Defender', score, level, date: new Date().toISOString().slice(0, 10), id: Date.now() };
+    list.push(entry); list.sort((a, b) => b.score - a.score); const top = list.slice(0, 10); LS.set('scores', top);
+    return top.some((e) => e.id === entry.id) ? entry.id : null;
   }
-  function highScores(hiId, afterBtn) {
-    const list = getScores();
-    const rows = list.length ? list.map((e, i) => `<tr class="${e.id === hiId ? 'me' : ''}"><td>${i + 1}</td><td>${esc(e.name)}</td><td class="r">${e.score.toLocaleString()}</td><td class="r">${e.level}</td><td class="r">${esc(e.date)}</td></tr>`).join('')
-      : '<tr><td colspan="5" style="text-align:center;padding:16px">No scores yet. Hold the line!</td></tr>';
-    dialog('High Scores', `<table class="scores"><thead><tr><th>#</th><th>Name</th><th class="r">Score</th><th class="r">Lvl</th><th class="r">Date</th></tr></thead><tbody>${rows}</tbody></table>
-      <p class="small">Top 10 on this device.</p>`, afterBtn || [{ label: 'Close' }]);
+  const scoreRows = (list, isMe) => list.map((e, i) => `<tr class="${isMe(e) ? 'me' : ''}"><td>${i + 1}</td><td>${esc(e.name)}</td><td class="r">${Number(e.score).toLocaleString()}</td><td class="r">${e.level}</td><td class="r">${esc(String(e.date || '').slice(0, 10))}</td></tr>`).join('');
+  const scoreTable = (rows, empty) => `<table class="scores"><thead><tr><th>#</th><th>Name</th><th class="r">Score</th><th class="r">Lvl</th><th class="r">Date</th></tr></thead><tbody>${rows || `<tr><td colspan="5" style="text-align:center;padding:16px">${empty}</td></tr>`}</tbody></table>`;
+  // opts: { tab: 'world'|'device', hiId (server id), localId, note, after (buttons) }
+  function leaderboard(opts) {
+    opts = opts || {};
+    let tab = opts.tab || 'world';
+    dialog('Leaderboard', `<div class="lb-tabs"><button data-tab="world">World</button><button data-tab="device">This device</button></div>
+      ${opts.note ? `<p class="lb-note">${opts.note}</p>` : ''}<div id="lb-body"></div>`, opts.after || [{ label: 'Close' }]);
+    const body = document.getElementById('lb-body'), tabs = ovB.querySelectorAll('.lb-tabs button');
+    const mine = new Set(myIds());
+    const renderDevice = () => { body.innerHTML = scoreTable(scoreRows(getScores(), (e) => e.id === opts.localId), 'No scores yet. Hold the line!') + '<p class="small">Top 10 on this device. Saved even when the world board is offline.</p>'; };
+    const renderWorld = (list) => { body.innerHTML = scoreTable(scoreRows(list, (e) => e.id === opts.hiId || (opts.hiId == null && mine.has(e.id))), 'No world scores yet. Be the first!') + '<p class="small">World top 20. Your scores glow gold.</p>'; };
+    const unavailable = () => { body.innerHTML = `<div class="lb-msg"><b>Leaderboard unavailable</b><br>The world board is taking a nap. Your scores are still saved on this device. Try again in a minute!</div>`; };
+    const show = (t) => {
+      tab = t; tabs.forEach((b) => b.classList.toggle('on', b.dataset.tab === t));
+      if (t === 'device') return renderDevice();
+      if (lb.cache && opts.fresh) { renderWorld(lb.cache); return; }
+      body.innerHTML = `<div class="lb-msg"><div class="spinner"></div>${lb.state === 'up' ? 'Loading world scores…' : 'Waking up the world board… (can take up to a minute)'}</div>`;
+      lbFetch('/scores?limit=20', null, 75000).then((j) => { lb.state = 'up'; lb.cache = j.scores || []; if (tab === 'world') renderWorld(lb.cache); }, () => { lb.state = 'down'; if (tab === 'world') unavailable(); });
+    };
+    tabs.forEach((b) => { b.onclick = () => { audio(); show(b.dataset.tab); }; });
+    show(tab);
   }
-  function askName(score, level) {
-    dialog('New High Score!', `<div class="big">${score.toLocaleString()}</div><p style="text-align:center">You made the top 10. Enter your name or initials:</p>
-      <input id="hs-name" class="name-input" maxlength="12" autocomplete="off" value="${esc(LS.get('lastName', ''))}" placeholder="AAA">`,
-      [{ label: 'Save', fn: () => {} }]);
-    const inp = document.getElementById('hs-name'), btn = ovBtn.querySelector('button');
+  function askName(run) {
+    const { score, level } = run;
+    dialog('Submit Your Score', `<div class="big">${score.toLocaleString()}</div><p style="text-align:center">Enter your name for the world leaderboard:</p>
+      <input id="hs-name" class="name-input" maxlength="16" autocomplete="off" value="${esc(LS.get('lastName', ''))}" placeholder="Your name">
+      <p id="hs-err" class="lb-err"></p>`,
+      [{ label: 'Submit', fn: () => {} }, { label: 'Skip', alt: true, fn: () => {} }]);
+    const inp = document.getElementById('hs-name'), err = document.getElementById('hs-err'), [btn, skip] = ovBtn.querySelectorAll('button');
     setTimeout(() => { try { inp.focus(); inp.select(); } catch (e) {} }, 50);
-    const save = () => { const nm = inp.value.trim() || 'Defender'; LS.set('lastName', nm); const id = addScore(nm, score, level); highScores(id, [{ label: 'Play Again', fn: newRun }]); };
-    btn.onclick = () => { closeDialog(); save(); };
-    inp.onkeydown = (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); closeDialog(); save(); } };
+    let sending = false, localId;
+    const saveLocal = (nm) => { if (localId === undefined) localId = addScore(nm, score, level); };
+    const offline = (nm, why) => { saveLocal(nm); leaderboard({ tab: 'device', localId, note: `${why} Your score is saved on this device.`, after: [{ label: 'Play Again', fn: newRun }] }); };
+    const submit = () => {
+      if (sending) return;
+      const nm = inp.value.trim();
+      if (!nm) { err.textContent = 'Please enter a name.'; return; }
+      LS.set('lastName', nm);
+      sending = true; btn.disabled = true; btn.innerHTML = '<span class="spinner sm"></span> Sending…'; err.textContent = '';
+      const tokP = run.tok && run.tok.sig ? Promise.resolve(run.tok) : lbFetch('/runs', { method: 'POST', body: '{}' }, 75000);
+      tokP.then((tok) => lbFetch('/scores', { method: 'POST', body: JSON.stringify({ name: nm, score, level, kills: run.kills, turns: run.turns, runId: tok.runId, t: tok.t, sig: tok.sig }) }, 75000))
+        .then((j) => {
+          lb.state = 'up'; lb.cache = j.scores; LS.set('myIds', myIds().concat(j.id).slice(-50)); saveLocal(nm);
+          closeDialog();
+          leaderboard({ tab: 'world', hiId: j.id, localId, fresh: true, note: j.rank <= 20 ? `You placed <b>#${j.rank}</b> in the world!` : `You placed #${j.rank} in the world. Keep going!`, after: [{ label: 'Play Again', fn: newRun }] });
+        }, (e) => {
+          sending = false; btn.disabled = false; btn.textContent = 'Submit';
+          if (e.status === 422 || e.status === 409) { err.textContent = e.message; return; } // e.g. pick a friendlier name
+          if (e.status === 429) { err.textContent = 'Too many scores sent from here just now. Try again in a few minutes, or Skip.'; return; }
+          closeDialog(); offline(nm, 'The world leaderboard is unavailable right now.');
+        });
+    };
+    btn.onclick = submit; skip.onclick = () => { closeDialog(); audio(); offline(inp.value.trim() || LS.get('lastName', '') || 'Defender', 'Not sent to the world board.'); };
+    inp.onkeydown = (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); submit(); } };
   }
   function gameOver() {
     if (overShown) return; overShown = true;
     sfx.over();
     lifetime += S.score; LS.set('lifetime', lifetime);
     const isBest = S.score >= best && S.score > 0, sc = S.score, lv = S.level;
+    const run = { score: sc, level: lv, kills: S.totalKills, turns: S.turn, tok: lb.run };
     setTimeout(() => dialog('The Barricades Have Fallen', `<div class="big">${sc.toLocaleString()}</div>
       ${isBest ? '<p style="text-align:center;color:#ffd84a;font-weight:bold">New best score!</p>' : ''}
       <div class="stats"><div>Defense Level</div><div>${lv}</div><div>Scorpions slain</div><div>${S.totalKills}</div>
       <div>Turns survived</div><div>${S.turn}</div><div>Best score</div><div>${best.toLocaleString()}</div><div>Total score</div><div>${lifetime.toLocaleString()}</div></div>`,
-      qualifies(sc) ? [{ label: 'Save Score', fn: () => askName(sc, lv) }, { label: 'Play Again', alt: true, fn: newRun }]
-        : [{ label: 'High Scores', alt: true, fn: () => highScores(null, [{ label: 'Play Again', fn: newRun }]) }, { label: 'Play Again', fn: newRun }]), 900);
+      sc > 0 ? [{ label: 'Submit Score', fn: () => askName(run) }, { label: 'Play Again', alt: true, fn: newRun }]
+        : [{ label: 'Leaderboard', alt: true, fn: () => leaderboard({ after: [{ label: 'Play Again', fn: newRun }] }) }, { label: 'Play Again', fn: newRun }]), 900);
   }
 
   const ITEM_RING = { spray: ['#7a2e24', '#3a120c'], fire: ['#6a5a40', '#2e2418'], super: ['#6a3aa8', '#2a1250'] };
@@ -805,7 +864,7 @@
     if (b) {
       sfx.click();
       if (b.id === 'settings') settings();
-      else if (b.id === 'scores') highScores();
+      else if (b.id === 'scores') leaderboard();
       else if (b.id === 'help') howTo();
       else if (b.id === 'guide') guide();
       else if (b.id.startsWith('item:')) tryItem(b.id.slice(5));
@@ -859,6 +918,7 @@
   resize();
   btnRects();
   newRun();
+  lbPing();
   let loading = { p: 0 }, ready = false;
   requestAnimationFrame(frame);
   window.SandArt.loadAssets((p) => { loading.p = p; }).then((failed) => {

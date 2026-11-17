@@ -2,6 +2,7 @@
 const { chromium } = require(process.env.PW_PATH || 'playwright');
 const url = process.argv[2] || 'http://localhost:8765/';
 const out = process.argv[3] || 'screenshots';
+const LB_NAME = process.env.LB_NAME || 'ZZ Test E2E';
 const fs = require('fs'); fs.mkdirSync(out, { recursive: true });
 const log = [], errors = [];
 const check = (c, m) => { log.push((c ? 'PASS ' : 'FAIL ') + m); if (!c) errors.push('assert: ' + m); };
@@ -65,9 +66,13 @@ async function useItem(page, k) {
   const browser = await chromium.launch();
   const ctx = await browser.newContext({ viewport: { width: 430, height: 932 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
   const page = await ctx.newPage();
-  page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errors.push('console.' + m.type() + ': ' + m.text()); });
+  // the 422 for the deliberately rude test name is expected; anything else is an error
+  page.on('console', (m) => { if ((m.type() === 'error' || m.type() === 'warning') && !/status of 422/.test(m.text())) errors.push('console.' + m.type() + ': ' + m.text()); });
   page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
-  page.on('response', (r) => { if (r.status() >= 400) errors.push('HTTP ' + r.status() + ' ' + r.url()); });
+  page.on('response', (r) => { if (/\/scores|\/runs|\/health/.test(r.url())) log.push('  net ' + r.request().method() + ' ' + r.url().replace(/^https?:\/\/[^/]+/, '') + ' -> ' + r.status());
+    if (r.status() >= 400 && !(r.status() === 422 && /\/scores$/.test(r.url()))) errors.push('HTTP ' + r.status() + ' ' + r.url()); });
+  page.on('requestfailed', (r) => log.push('  net FAILED ' + r.url() + ' ' + (r.failure() || {}).errorText));
+  global.__page = page;
   await page.goto(url); await page.waitForFunction(() => window.__sand && window.__sand.ready, null, { timeout: 30000 }); await page.waitForTimeout(300);
   check((await page.evaluate(() => window.__sand.failedAssets.length)) === 0 && (await page.evaluate(() => window.SandArt.ASSETS.every((k) => window.SandArt.has(k)))), 'all raster sprites load (no missing assets)');
   await page.screenshot({ path: `${out}/01-mobile-howto.png` });
@@ -181,7 +186,7 @@ async function useItem(page, k) {
   // forced level-up
   await calm(page);
   await page.evaluate(() => { const S = window.__sand.S; S.tray[0] = S.tray[0] || 2; S.enemies.push({ id: 7300, type: 'crawler', lane: 0, row: 2, w: 1, hp: 1, maxHp: 50 }); window.__sand.resync(); });
-  await page.evaluate(() => { const S = window.__sand.S; S.kills = 24; for (const e of S.enemies) if (e.type !== 'pickup') e.hp = 1; });
+  await page.evaluate(() => { const S = window.__sand.S; S.kills = 24; S.totalKills = (S.level - 1) * 25 + 24; for (const e of S.enemies) if (e.type !== 'pickup') e.hp = 1; });
   const lv0 = (await st(page)).level; await play(page, 2, 'level-up');
   s = await st(page); check(s.level === lv0 + 1 && s.kills < 25, `seamless level-up ${lv0} -> ${s.level} (counter ${s.kills}/25)`);
   const sumIt = (x) => x.items.spray + x.items.fire + x.items.super + x.itemUsed.spray + x.itemUsed.fire + x.itemUsed.super;
@@ -196,12 +201,23 @@ async function useItem(page, k) {
   const over = await page.evaluate(() => !document.getElementById('overlay').classList.contains('hidden') && document.getElementById('ov-title').textContent);
   check(over === 'The Barricades Have Fallen', 'second barricade hit ends the run with the game-over dialog');
   await page.screenshot({ path: `${out}/05-mobile-gameover.png` });
-  check((await page.textContent('#ov-buttons .btn')) === 'Save Score', 'qualifying score offers Save Score');
-  await page.click('#ov-buttons .btn'); await page.waitForTimeout(200);
-  await page.fill('#hs-name', 'SG'); await page.click('#ov-buttons .btn'); await page.waitForTimeout(200);
-  check((await page.textContent('#ov-title')) === 'High Scores' && (await page.textContent('table.scores tr.me')).includes('SG'), 'name prompt saves the score into the top-10 list');
-  check((await page.evaluate(() => JSON.parse(localStorage.getItem('sandline.scores'))))[0].name === 'SG', 'high scores stored in localStorage');
-  await page.screenshot({ path: `${out}/11-mobile-highscores.png` });
+  check((await page.textContent('#ov-buttons .btn')) === 'Submit Score', 'game over offers Submit Score');
+    await page.click('#ov-buttons .btn'); await page.waitForTimeout(200);
+  check((await page.getAttribute('#hs-name', 'maxlength')) === '16', 'name prompt allows 16 characters');
+  // profanity is rejected by the server and shown inline
+  await page.fill('#hs-name', 'shit head'); await page.click('#ov-buttons .btn');
+  await page.waitForFunction(() => document.getElementById('hs-err').textContent.length > 0, null, { timeout: 90000 });
+  check(/friendlier/i.test(await page.textContent('#hs-err')), 'rude name rejected with a friendly message: ' + (await page.textContent('#hs-err')));
+  await page.fill('#hs-name', LB_NAME); await page.click('#ov-buttons .btn');
+  await page.waitForFunction(() => document.getElementById('ov-title').textContent === 'Leaderboard' && document.querySelector('table.scores tr.me'), null, { timeout: 90000 });
+  const meRow = await page.textContent('table.scores tr.me');
+  check(meRow.includes(LB_NAME), 'submitted score appears on the WORLD top 20, highlighted: ' + meRow.replace(/\s+/g, ' '));
+  check(/in the world/.test(await page.textContent('.lb-note')), 'rank shown: ' + (await page.textContent('.lb-note')));
+  check((await page.evaluate(() => JSON.parse(localStorage.getItem('sandline.scores'))))[0].name === LB_NAME, 'score also saved to the local top 10');
+  check((await page.evaluate(() => JSON.parse(localStorage.getItem('sandline.lastName')))) === LB_NAME, 'last name remembered');
+  await page.screenshot({ path: `${out}/11-mobile-leaderboard.png` });
+  await page.click('.lb-tabs button[data-tab=device]'); await page.waitForTimeout(150);
+  check((await page.textContent('table.scores tr.me')).includes(LB_NAME), '"This device" tab shows the local top 10 with the entry highlighted');
   await page.click('#ov-buttons .btn'); await page.waitForTimeout(300);
   s = await st(page); check(!s.over && s.turn === 0, 'Play Again starts a fresh run');
   check((await page.evaluate(() => JSON.parse(localStorage.getItem('sandline.best')))) > 0, 'best score saved to localStorage');
@@ -215,7 +231,9 @@ async function useItem(page, k) {
   await page.click('#mute-all'); check((await page.evaluate(() => JSON.parse(localStorage.getItem('sandline.settings')).mute)) === true, 'mute toggle saved');
   await page.click('#mute-all'); await page.click('#ov-buttons .btn'); await page.waitForTimeout(200);
   await clickLogical(page, 540 - 136, 108); await page.waitForTimeout(250);
-  check((await page.textContent('#ov-title')) === 'High Scores', 'trophy button opens High Scores');
+  check((await page.textContent('#ov-title')) === 'Leaderboard', 'trophy button opens the Leaderboard');
+  await page.waitForSelector('table.scores', { timeout: 90000 });
+  check((await page.textContent('table.scores tr.me')).includes(LB_NAME), 'own world entry highlighted when reopened');
   await page.click('#ov-buttons .btn'); await page.waitForTimeout(200);
 
   // ---- desktop ----
@@ -229,6 +247,36 @@ async function useItem(page, k) {
   await d.screenshot({ path: `${out}/06-desktop-guide.png` });
   await d.click('#ov-buttons .btn'); await d.waitForTimeout(200);
   await d.screenshot({ path: `${out}/07-desktop.png` });
+
+  // ---- leaderboard server down: game keeps working, friendly message, local fallback ----
+  const dn = await (await browser.newContext({ viewport: { width: 1366, height: 900 } })).newPage();
+  dn.on('pageerror', (e) => errors.push('down pageerror: ' + e.message));
+  await dn.route((u) => u.hostname.endsWith('onrender.com') || u.port === '18790', (r) => r.abort());
+  await dn.goto(url); await dn.waitForFunction(() => window.__sand && window.__sand.ready, null, { timeout: 30000 }); await dn.waitForTimeout(300); await dn.click('#ov-buttons .btn');
+  await play(dn, 4, 'down');
+  const tb2 = await dn.evaluate(() => window.__sand.toScreen(window.__sand.W - 136, 108)); await dn.mouse.click(tb2.x, tb2.y);
+  await dn.waitForFunction(() => /unavailable/i.test((document.getElementById('lb-body') || {}).textContent || ''), null, { timeout: 30000 });
+  check(true, 'server down: Leaderboard shows "Leaderboard unavailable"');
+  await dn.screenshot({ path: `${out}/14-leaderboard-unavailable.png` });
+  await dn.click('#ov-buttons .btn'); await dn.waitForTimeout(200);
+  await dn.evaluate(() => { const S = window.__sand.S, R = window.SandGame.ROWS - 1; S.wallHits = 1; S.walls = [false, true]; S.enemies.push({ id: 7400, type: 'crawler', lane: 2, row: R, w: 1, hp: 99999, maxHp: 99999 }); window.__sand.resync(); });
+  await play(dn, 3, 'down-over'); await dn.waitForTimeout(1400);
+  if ((await dn.textContent('#ov-title')) === 'The Barricades Have Fallen' && (await dn.textContent('#ov-buttons .btn')) === 'Submit Score') {
+    await dn.click('#ov-buttons .btn'); await dn.waitForTimeout(150); await dn.fill('#hs-name', 'Offline Olly'); await dn.click('#ov-buttons .btn');
+    await dn.waitForFunction(() => /unavailable/i.test((document.querySelector('.lb-note') || {}).textContent || ''), null, { timeout: 30000 });
+    check((await dn.textContent('table.scores tr.me')).includes('Offline Olly'), 'server down: score still saved locally and shown on "This device"');
+    await dn.click('#ov-buttons .btn'); await dn.waitForTimeout(300);
+    check(!(await st(dn)).over, 'server down: Play Again still works');
+  } else check(false, 'server down: could not reach game over (' + (await dn.textContent('#ov-title')) + ')');
+  // ---- debug board: the five new tiers 4096..65536 ----
+  await dn.evaluate(() => { const S = window.__sand.S; S.over = false; S.enemies = []; S.tray = [4096, 8192, 16384, 32768, 65536, 2048, 1024, 0, 0, 0]; S.pocket = 131072; window.__sand.resync(); });
+  await dn.waitForTimeout(600);
+  await dn.screenshot({ path: `${out}/15-new-tiers-board.png` });
+  const gb2 = await dn.evaluate(() => window.__sand.toScreen(window.__sand.W - 34, 108)); await dn.mouse.click(gb2.x, gb2.y); await dn.waitForTimeout(400);
+  check((await dn.$$eval('.tier-cell b', (bs) => bs.map((b) => b.textContent))).slice(-5).join(',') === '4096,8192,16384,32768,65536+', 'guide lists the 5 new tiers');
+  await dn.screenshot({ path: `${out}/16-guide-tiers.png` });
+  const loaded = await dn.evaluate(() => [13, 14, 15, 16, 17].every((i) => window.SandArt.has('cannon' + i)));
+  check(loaded, 'new cannon sprites 13..17 loaded');
 
   // ---- iPad portrait, real touch tap-tap ----
   const ip = await (await browser.newContext({ viewport: { width: 820, height: 1180 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true })).newPage();
@@ -255,4 +303,4 @@ async function useItem(page, k) {
   console.log(log.join('\n'));
   console.log(errors.length ? 'ERRORS:\n' + errors.join('\n') : 'No console errors; all checks passed.');
   process.exit(errors.length ? 1 : 0);
-})().catch((e) => { console.error('FAIL', e); process.exit(2); });
+})().catch(async (e) => { console.log(log.join('\n')); try { console.log('overlay:', await global.__page.textContent('#overlay')); } catch (x) {} console.error('FAIL', e); process.exit(2); });
